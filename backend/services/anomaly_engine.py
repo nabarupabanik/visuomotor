@@ -6,7 +6,7 @@ Includes the 9:15 AM Opening Auction Seasonality Rule to suppress false positive
 from collections import deque
 import numpy as np
 from sklearn.ensemble import IsolationForest
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, Any
 
 
 class AnomalyEngine:
@@ -24,16 +24,30 @@ class AnomalyEngine:
             n_jobs=1,
         )
         self._is_fitted = False
+        self.day_high = 0
+        self.day_low = float('inf')
 
-    def score_tick(self, price: float, volume: float, tod_hour: float) -> Tuple[float, int]:
+    def score_tick(self, price: float, volume: float, tod_hour: float) -> Tuple[float, int, Dict[str, Any]]:
         """
-        Calculates (anomaly_score: float [0.0-1.0], trigger_code: int [0-5]).
+        Calculates (anomaly_score: float [0.0-1.0], trigger_code: int [0-5], metrics: dict).
         """
+        price_int = int(price)
+        self.day_high = max(self.day_high, price_int)
+        if self.day_low == float('inf') or price_int < self.day_low:
+            self.day_low = price_int
+
         self.window.append([price, volume])
+
+        default_metrics = {
+            "vol_multiplier": 1.0,
+            "z_score": 0.0,
+            "day_high": self.day_high,
+            "day_low": self.day_low if self.day_low != float('inf') else price_int,
+        }
 
         # Need minimum 15 ticks for statistical variance
         if len(self.window) < 15:
-            return 0.0, 0
+            return 0.0, 0, default_metrics
 
         arr = np.array(self.window)
 
@@ -71,7 +85,15 @@ class AnomalyEngine:
         if combined_score >= 0.65 or abs_z >= z_threshold:
             trigger_code = self._classify(signed_z, volume, avg_volume)
 
-        return combined_score, trigger_code
+        vol_multiplier = round(float(volume / (avg_volume + 1e-9)), 2)
+        metrics = {
+            "vol_multiplier": vol_multiplier,
+            "z_score": round(float(signed_z), 2),
+            "day_high": self.day_high,
+            "day_low": self.day_low if self.day_low != float('inf') else price_int,
+        }
+
+        return combined_score, trigger_code, metrics
 
     def _get_dynamic_threshold(self, hour: float) -> float:
         """

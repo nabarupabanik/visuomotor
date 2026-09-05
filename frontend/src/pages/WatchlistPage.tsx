@@ -38,6 +38,18 @@ const MOCK_INDICES = [
   { name: 'FINNIFTY',   price: '26,051.00', change: '+112.30', pct: '+0.43%', up: true  },
 ];
 
+// ── User holdings (symbol → quantity) ────────────────────────────────────────
+// Replace this with a real API call (e.g. GET /api/portfolio/holdings) once
+// the holdings endpoint is available. TickerRow reads this as a pure prop —
+// no Zustand changes required.
+const MOCK_USER_HOLDINGS: Record<string, number> = {
+  RELIANCE:   15,
+  TCS:        8,
+  HDFCBANK:   20,
+  INFY:       12,
+  ASIANPAINT: 5,
+};
+
 export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [watchlists, setWatchlists] = useState<WatchlistDto[]>([]);
@@ -850,6 +862,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
                   onMoveUp={() => handleMoveSymbol(idx, 'up')}
                   onMoveDown={() => handleMoveSymbol(idx, 'down')}
                   onRemove={() => handleRemoveSymbol(item.symbol)}
+                  holdings={MOCK_USER_HOLDINGS}
                 />
               ))
             )}

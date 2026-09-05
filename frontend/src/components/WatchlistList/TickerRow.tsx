@@ -14,11 +14,14 @@ interface TickerRowProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
+  /** Optional holdings map passed from WatchlistPage: symbol -> quantity owned */
+  holdings?: Record<string, number>;
 }
 
 export const TickerRow: React.FC<TickerRowProps> = ({
   symbol,
   onRemove,
+  holdings,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const priceRef = useRef<HTMLSpanElement>(null);
@@ -142,8 +145,12 @@ export const TickerRow: React.FC<TickerRowProps> = ({
               </span>
             )}
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-            NSE
+          {/* Exchange + optional Holdings badge on the same sub-line */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>NSE</span>
+            {holdings && holdings[symbol] !== undefined && (
+              <HoldingBadge qty={holdings[symbol]} />
+            )}
           </div>
         </div>
       </div>
@@ -260,6 +267,120 @@ export const TickerRow: React.FC<TickerRowProps> = ({
           </svg>
         </button>
       </div>
+
+      {/* ── Quick Actions Overlay (CSS-only hover, position:absolute) ───────
+          Floats over the Volume + 52W columns on row hover.
+          Left gradient fades it over underlying text — no hard edge.
+          Controlled entirely by .ticker-row:hover .quick-actions in CSS.
+      ────────────────────────────────────────────────────────────────────── */}
+      <div
+        className="quick-actions"
+        style={{
+          position: 'absolute',
+          right: '48px',         /* leave space for the remove button in col 7 */
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          /* Gradient fade: transparent on left → white, so text underneath blends away */
+          background: 'linear-gradient(to right, transparent 0%, #ffffff 28px)',
+          paddingLeft: '32px',
+          paddingRight: '4px',
+          height: '100%',
+          minHeight: '56px',
+        }}
+      >
+        {/* Chart button */}
+        <button
+          type="button"
+          className="qa-btn"
+          title={`View ${symbol} chart`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+        </button>
+
+        {/* Alert / Target button */}
+        <button
+          type="button"
+          className="qa-btn"
+          title={`Set alert for ${symbol}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+
+        {/* Buy button */}
+        <button
+          type="button"
+          className="qa-btn qa-buy"
+          title={`Buy ${symbol}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          B
+        </button>
+
+        {/* Sell button */}
+        <button
+          type="button"
+          className="qa-btn qa-sell"
+          title={`Sell ${symbol}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          S
+        </button>
+      </div>
     </div>
   );
 };
+
+
+// ── HoldingBadge ─────────────────────────────────────────────────────────────
+// Sits below the symbol/NSE text in Col 1. Fully self-contained — no grid
+// impact because it lives inside the existing Company column flex stack.
+
+interface HoldingBadgeProps {
+  qty: number;
+}
+
+const HoldingBadge: React.FC<HoldingBadgeProps> = ({ qty }) => (
+  <span
+    title={`In your holdings: ${qty} share${qty !== 1 ? 's' : ''}`}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '3px',
+      padding: '1px 6px',
+      borderRadius: '4px',
+      backgroundColor: 'rgba(0, 208, 156, 0.10)',
+      border: '1px solid rgba(0, 208, 156, 0.22)',
+      fontSize: '11px',
+      fontWeight: 500,
+      color: '#00A87E',
+      whiteSpace: 'nowrap',
+      lineHeight: '16px',
+      cursor: 'default',
+      userSelect: 'none',
+    }}
+  >
+    {/* Mini portfolio icon */}
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 12 12"
+      fill="none"
+      style={{ flexShrink: 0 }}
+    >
+      <rect x="1" y="4" width="10" height="7" rx="1" stroke="#00A87E" strokeWidth="1.3" />
+      <path d="M4 4V3a2 2 0 0 1 4 0v1" stroke="#00A87E" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+    {qty.toLocaleString()} qty
+  </span>
+);
+

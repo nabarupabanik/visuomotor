@@ -296,3 +296,47 @@ def reorder_watchlist_items(watchlist_id):
         "message": "Watchlist reordered",
         "items": [i.to_dict() for i in updated_items],
     }), 200
+
+
+@watchlist_bp.route("/alerts/dismiss", methods=["POST"])
+@jwt_required(optional=True)
+def dismiss_alert():
+    """
+    Zone 1 Alert Dismissal Endpoint.
+    Persists dismissed symbols into user session / Redis set with TTL matching market close (15:30 IST).
+    """
+    import datetime
+    import pytz
+
+    data = request.get_json() or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    if not symbol:
+        return jsonify({"error": "Symbol is required"}), 400
+
+    user_id = "anonymous"
+    try:
+        user_id = get_jwt_identity() or "anonymous"
+    except Exception:
+        pass
+
+    try:
+        ist = pytz.timezone('Asia/Kolkata')
+        now_ist = datetime.datetime.now(ist)
+        close_time = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+        if now_ist >= close_time:
+            ttl = 14400
+        else:
+            ttl = max(60, int((close_time - now_ist).total_seconds()))
+    except Exception:
+        ttl = 14400
+
+    redis_key = f"dismissed_alerts:{user_id}"
+    try:
+        from ..extensions import redis_client
+        redis_client.sadd(redis_key, symbol)
+        redis_client.expire(redis_key, ttl)
+    except Exception:
+        pass
+
+    return jsonify({"status": "dismissed", "symbol": symbol, "ttl": ttl}), 200
+

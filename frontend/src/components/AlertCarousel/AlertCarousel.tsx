@@ -1,6 +1,7 @@
 import React from 'react';
 import { useMarketStore } from '../../store/marketStore';
 import { AlertCard } from './AlertCard';
+import { PlacardExpandedView } from './PlacardExpandedView';
 
 interface AlertCarouselProps {
   onRetrySummary?: (symbol: string) => void;
@@ -8,13 +9,18 @@ interface AlertCarouselProps {
 
 export const AlertCarousel: React.FC<AlertCarouselProps> = ({ onRetrySummary }) => {
   const alerts = useMarketStore((state) => state.alerts);
+  const expandedAlertSymbol = useMarketStore((state) => state.expandedAlertSymbol);
+  const setExpandedAlert = useMarketStore((state) => state.setExpandedAlert);
+  const dismissAlert = useMarketStore((state) => state.dismissAlert);
+
+  const activeExpandedAlert = (alerts || []).find((a) => a?.symbol === expandedAlertSymbol);
 
   if (!alerts || alerts.length === 0) {
     return null;
   }
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '2px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '0.95rem' }}>⚡</span>
@@ -42,7 +48,7 @@ export const AlertCarousel: React.FC<AlertCarouselProps> = ({ onRetrySummary }) 
           </span>
         </div>
         <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-          Scroll horizontally →
+          Click card to inspect anomaly placard
         </div>
       </div>
 
@@ -65,6 +71,19 @@ export const AlertCarousel: React.FC<AlertCarouselProps> = ({ onRetrySummary }) 
           />
         ))}
       </div>
+
+      {/* Centered Modal Overlay (Fixed, floating above viewport) */}
+      {activeExpandedAlert && (
+        <PlacardExpandedView
+          alert={activeExpandedAlert}
+          onCollapse={() => setExpandedAlert(null)}
+          onDismiss={(symbol) => {
+            dismissAlert(symbol);
+            setExpandedAlert(null);
+          }}
+          onRetrySummary={onRetrySummary}
+        />
+      )}
     </section>
   );
 };

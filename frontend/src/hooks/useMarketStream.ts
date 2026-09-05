@@ -50,13 +50,14 @@ export function useMarketStream({ symbols = [], enabled = true }: UseMarketStrea
     // ── Listen for live ticks ───────────────────────────────────────────────
     es.addEventListener('tick', (event: MessageEvent) => {
       try {
-        const tick: { s: string; p: number; v: number; sc: number; tc: number; sparklineTs: number } = JSON.parse(event.data);
+        const tick: { s: string; p: number; v: number; sc: number; tc: number; sparklineTs: number; metrics?: any } = JSON.parse(event.data);
         const tickData: TickData = {
           ltp: tick.p,
           volume: tick.v,
           anomalyScore: tick.sc,
           triggerCode: tick.tc,
           sparklineTs: tick.sparklineTs || Math.floor(Date.now() / 1000),
+          metrics: tick.metrics,
         };
         updateTick(tick.s, tickData);
       } catch (err) {

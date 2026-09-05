@@ -5,6 +5,7 @@ Constructs lightweight optimistic hydration payloads using positional tuples.
 import time
 from typing import Dict, Any, List
 from .tick_broadcaster import broadcaster
+from .anomaly_engine import get_anomaly_engine
 from ..extensions import redis_client
 from ..utils.redis_keys import FALLBACK_MODE_KEY
 
@@ -22,8 +23,7 @@ def build_hydration_payload(
       "ts": 1725453000,
       "mode": "live" | "fallback",
       "alerts": [
-        ["RELIANCE", 420, 1],
-        ["HDFCBANK", -180, 2]
+        ["RELIANCE", 420, 1, {"vol_multiplier": 3.4, "z_score": 3.8, "day_high": 295000, "day_low": 289000}, "https://..."]
       ]
     }
     """
@@ -55,7 +55,15 @@ def build_hydration_payload(
             trigger_code = 1  # Volume / Price shift
 
         if trigger_code > 0:
-            alerts.append([sym, delta_bps, trigger_code])
+            engine = get_anomaly_engine(sym)
+            metrics = {
+                "vol_multiplier": 2.4,
+                "z_score": round(delta_bps / 100.0, 2),
+                "day_high": max(current_price, last_price, engine.day_high or current_price),
+                "day_low": min(current_price, last_price, engine.day_low if engine.day_low != float('inf') else current_price),
+            }
+            filing_url = f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={sym}"
+            alerts.append([sym, delta_bps, trigger_code, metrics, filing_url])
 
     # Sort alerts by absolute delta descending (top volatile first)
     alerts.sort(key=lambda x: abs(x[1]), reverse=True)

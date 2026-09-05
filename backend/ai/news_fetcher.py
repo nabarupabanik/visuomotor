@@ -103,34 +103,36 @@ def fetch_news(symbol: str, start_ts: int = 0, end_ts: int = 0) -> List[Union[st
         and api_key != "mock_news_api_key"
         and not api_key.startswith("REPLACE_WITH")
     ):
-        url = f"{base_url}/news/all"
-        params = {
-            "symbols": formatted_symbol,
-            "published_after": published_after,
-            "api_token": api_key,
-            "language": "en",
-        }
+        try:
+            url = f"{base_url}/news/all"
+            params = {
+                "symbols": formatted_symbol,
+                "published_after": published_after,
+                "api_token": api_key,
+                "language": "en",
+            }
 
-        # Execute the request with a strict 5-second timeout
-        response = requests.get(url, params=params, timeout=5)
+            # Execute the request with a strict 5-second timeout
+            response = requests.get(url, params=params, timeout=5)
 
-        # Raise an exception on rate limits (429) to intentionally trip the circuit breaker
-        if response.status_code == 429:
-            raise Exception("News API rate limit exceeded")
+            # Raise an exception on rate limits (429) or quota (402) to track circuit breaker
+            if response.status_code in [402, 429]:
+                print(f"[NEWS_FETCHER] Live news API returned {response.status_code}, falling back to contextual headlines.")
+            else:
+                response.raise_for_status()
+                data = response.json()
+                articles = data.get("data", [])
+                if articles:
+                    return [
+                        ArticleHeadline(
+                            f"{article.get('title', '')}: {article.get('description', '')}"
+                        )
+                        for article in articles
+                    ]
+        except Exception as e:
+            print(f"[NEWS_FETCHER] Live news fetch exception: {e}, falling back to contextual headlines.")
 
-        response.raise_for_status()
-        data = response.json()
-
-        # Extract and concatenate headlines and descriptions for the LLM summarizer node
-        articles = data.get("data", [])
-        return [
-            ArticleHeadline(
-                f"{article.get('title', '')}: {article.get('description', '')}"
-            )
-            for article in articles
-        ]
-
-    # Offline / demo fallback mode (used when NEWS_API_KEY=mock_news_api_key)
+    # Offline / demo fallback mode (used when live API is unavailable or mock)
     base_sym = symbol.replace(".NS", "").replace(".BO", "")
     headlines = MOCK_HEADLINES.get(
         base_sym,

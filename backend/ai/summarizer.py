@@ -23,6 +23,7 @@ def generate_streaming_summary(
     if config.OPENAI_API_KEY and config.OPENAI_API_KEY != "mock_openai_api_key":
         try:
             from openai import OpenAI
+            client = OpenAI(api_key=config.OPENAI_API_KEY)
             def _get_title(h):
                 if isinstance(h, dict):
                     return h.get("title", "")

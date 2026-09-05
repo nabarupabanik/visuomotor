@@ -81,7 +81,7 @@ body {
   background-color: #F9FAFB;
 }
 
-/* Row action hover trigger */
+/* Row action hover trigger — generic fade-in class */
 .ticker-row .row-hover-action {
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -89,6 +89,70 @@ body {
 
 .ticker-row:hover .row-hover-action {
   opacity: 1;
+}
+
+/* ── Quick-action overlay (CSS-only, no React state) ─────────────────────── */
+/*
+  Absolutely positioned over the right side of the row.
+  Uses a left-edge gradient so it fades over Volume/52W text seamlessly.
+  pointer-events toggled by CSS only — zero JS state, zero re-renders.
+*/
+.ticker-row .quick-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+}
+
+.ticker-row:hover .quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Individual action buttons inside the overlay */
+.quick-actions .qa-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid #E8E9EB;
+  background: #FFFFFF;
+  color: #44475B;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.1s ease;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.quick-actions .qa-btn:hover {
+  border-color: #AAACB8;
+  transform: scale(1.06);
+}
+
+.quick-actions .qa-btn.qa-buy {
+  background: #00D09C;
+  border-color: transparent;
+  color: #FFFFFF;
+}
+
+.quick-actions .qa-btn.qa-buy:hover {
+  background: #00BB8A;
+  border-color: transparent;
+}
+
+.quick-actions .qa-btn.qa-sell {
+  background: #EB5B3C;
+  border-color: transparent;
+  color: #FFFFFF;
+}
+
+.quick-actions .qa-btn.qa-sell:hover {
+  background: #D44E32;
+  border-color: transparent;
 }
 
 /* Direct DOM Flash animations on price updates */

@@ -92,7 +92,7 @@ class TickBroadcaster:
 
         # Real-time anomaly scoring
         engine = get_anomaly_engine(symbol)
-        sc, tc = engine.score_tick(new_price, volume, tod_hour)
+        sc, tc, metrics = engine.score_tick(new_price, volume, tod_hour)
 
         # Payload matching design.md §7.2:
         # s: symbol, p: price in paise, v: volume, sc: anomaly score, tc: trigger code
@@ -103,6 +103,7 @@ class TickBroadcaster:
             "sc": sc,
             "tc": tc,
             "sparklineTs": now_epoch,
+            "metrics": metrics,
         }
         return tick
 

@@ -26,16 +26,40 @@ export function useSessionCheckpoint() {
 
         const { alerts } = res.data;
 
-        // Transform positional tuples [symbol, delta_bps, trigger_code]
+        // Transform positional tuples [symbol, delta_bps, trigger_code, metrics, filing_url]
         if (Array.isArray(alerts) && alerts.length > 0) {
-          const alertObjects: AlertData[] = alerts.map(([sym, deltaBps, tc]) => ({
-            symbol: sym,
-            deltaBps,
-            triggerCode: tc,
-            summary: null,
-            isSummaryLoading: true,
-            isSummaryError: false,
-          }));
+          const exitTs = (res.data?.ts ? res.data.ts * 1000 : 0) || (Date.now() - 3600000 * 3.25);
+          const alertObjects: AlertData[] = alerts
+            .filter((tuple) => Array.isArray(tuple) && tuple.length >= 1 && tuple[0])
+            .map((tuple: any) => {
+              const sym = String(tuple[0]).trim().toUpperCase();
+              const deltaBps = Number(tuple[1]) || 0;
+              const tc = Number(tuple[2]) || 1;
+              const metrics = tuple[3] && typeof tuple[3] === 'object' ? tuple[3] : {};
+              const filingUrl = tuple[4] || `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${sym}`;
+
+              const baseP = Number(metrics.day_low) || 100000;
+              const currP = Math.round(baseP * (1 + deltaBps / 10000));
+
+              return {
+                symbol: sym,
+                deltaBps,
+                triggerCode: tc,
+                baselinePrice: baseP,
+                currentPrice: currP,
+                exitTimestamp: exitTs,
+                metrics: {
+                  volMultiplier: Number(metrics.vol_multiplier) || 2.8,
+                  zScore: Number(metrics.z_score) || parseFloat((deltaBps / 100).toFixed(2)),
+                  dayHigh: Number(metrics.day_high) || Math.max(baseP, currP),
+                  dayLow: Number(metrics.day_low) || Math.min(baseP, currP),
+                },
+                filingUrl,
+                summary: null,
+                isSummaryLoading: true,
+                isSummaryError: false,
+              };
+            });
           setAlerts(alertObjects);
         }
 

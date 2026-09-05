@@ -16,7 +16,7 @@ export function useSummaryRequest() {
 
       try {
         const now = Math.floor(Date.now() / 1000);
-        const res = await api.post<{ symbol: string; summary: string }>('/summary/generate', {
+        const res = await api.post<{ symbol: string; summary: string; filing_url?: string }>('/summary/generate', {
           symbol,
           start_ts: now - 14400,
           end_ts: now,
@@ -27,12 +27,14 @@ export function useSummaryRequest() {
           isLoading: false,
           isError: false,
           summary: res.data.summary,
+          filingUrl: res.data.filing_url || `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${symbol}`,
         });
       } catch (err) {
         console.error(`AI summary request failed for ${symbol}:`, err);
         setAlertSummaryStatus(symbol, {
           isLoading: false,
           isError: true,
+          filingUrl: `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${symbol}`,
         });
       } finally {
         inFlightRef.current.delete(symbol);

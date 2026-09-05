@@ -36,22 +36,30 @@ def generate_summary():
         "error": None,
     }
 
+    filing_url = f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={symbol}"
+
     try:
         final_state = catalyst_pipeline.invoke(initial_state)
         if final_state.get("error"):
             return jsonify({
                 "symbol": symbol,
                 "error": final_state["error"],
+                "filing_url": filing_url,
+                "has_filings": True,
             }), 502
 
         return jsonify({
             "symbol": symbol,
             "summary": final_state.get("summary"),
             "cache_hit": final_state.get("cache_hit", False),
+            "filing_url": filing_url,
+            "has_filings": True,
         }), 200
 
     except Exception as exc:
         return jsonify({
             "symbol": symbol,
             "error": str(exc),
+            "filing_url": filing_url,
+            "has_filings": True,
         }), 500

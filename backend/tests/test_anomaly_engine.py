@@ -35,14 +35,17 @@ def test_anomaly_scoring_and_trigger_codes():
         engine.score_tick(350000 + (_ % 3 * 10), 500, 11.0)
 
     # 1. Normal tick within cluster -> score low, tc = 0
-    sc_norm, tc_norm = engine.score_tick(350010, 500, 11.0)
+    sc_norm, tc_norm, metrics_norm = engine.score_tick(350010, 500, 11.0)
     assert sc_norm < 0.65
     assert tc_norm == 0
+    assert "day_high" in metrics_norm
+    assert "vol_multiplier" in metrics_norm
 
     # 2. Volume spike anomaly (high volume ratio > 2.2)
-    sc_spike, tc_spike = engine.score_tick(355000, 25000, 11.0)
+    sc_spike, tc_spike, metrics_spike = engine.score_tick(355000, 25000, 11.0)
     assert sc_spike >= 0.5
     assert tc_spike in [1, 2, 3]
+    assert metrics_spike["vol_multiplier"] > 2.0
 
 
 def test_tiered_fallback_service():
