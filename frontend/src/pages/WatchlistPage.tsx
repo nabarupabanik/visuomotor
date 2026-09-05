@@ -1,0 +1,785 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { authService, UserProfile } from '../services/authService';
+import { watchlistService, WatchlistDto } from '../services/watchlistService';
+import { useSessionStore } from '../store/sessionStore';
+import { useMarketStore } from '../store/marketStore';
+import { useMarketStream } from '../hooks/useMarketStream';
+import { useSessionCheckpoint } from '../hooks/useSessionCheckpoint';
+import { WatchlistSidebar } from '../components/WatchlistManager/WatchlistSidebar';
+import { AddSymbolSearch } from '../components/WatchlistManager/AddSymbolSearch';
+import { TickerRow } from '../components/WatchlistList/TickerRow';
+import { AlertCarousel } from '../components/AlertCarousel/AlertCarousel';
+import { SortToggle } from '../components/WatchlistList/SortToggle';
+import { useVolatilitySortedList } from '../hooks/useVolatilitySortedList';
+import { useSummaryRequest } from '../hooks/useSummaryRequest';
+
+interface WatchlistPageProps {
+  onLogout: () => void;
+}
+
+// ── Mock global indices ──────────────────────────────────────────────────────
+const MOCK_INDICES = [
+  { name: 'NIFTY',      price: '23,897.70', change: '+24.25',  pct: '+0.10%', up: true  },
+  { name: 'SENSEX',     price: '76,515.43', change: '+362.57', pct: '+0.48%', up: true  },
+  { name: 'BANKNIFTY',  price: '57,369.65', change: '-10.95',  pct: '-0.02%', up: false },
+  { name: 'MIDCPNIFTY', price: '14,713.65', change: '-46.35',  pct: '-0.31%', up: false },
+  { name: 'FINNIFTY',   price: '26,051.00', change: '+112.30', pct: '+0.43%', up: true  },
+];
+
+export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [watchlists, setWatchlists] = useState<WatchlistDto[]>([]);
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [watchlistSearch, setWatchlistSearch] = useState('');
+
+  const setWatchlistSymbols = useSessionStore((state) => state.setWatchlistSymbols);
+  const setActiveWatchlistIdInStore = useSessionStore((state) => state.setActiveWatchlistId);
+
+  // Load user and watchlists
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const userRes = await authService.getMe();
+      setUser(userRes.user);
+
+      const wlList = await watchlistService.listWatchlists();
+      setWatchlists(wlList);
+
+      if (wlList.length > 0) {
+        const initialWl = wlList[0];
+        setActiveWatchlistId(initialWl.id);
+        setActiveWatchlistIdInStore(initialWl.id);
+        const symbols = (initialWl.items || []).map((i) => i.symbol);
+        setWatchlistSymbols(symbols);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to load watchlist data.');
+      if (err.response?.status === 401) {
+        onLogout();
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [onLogout, setActiveWatchlistIdInStore, setWatchlistSymbols]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const activeWatchlist = watchlists.find((w) => w.id === activeWatchlistId);
+  const activeItems = activeWatchlist?.items || [];
+  const existingSymbols = activeItems.map((i) => i.symbol);
+
+  // Hook up cross-device session checkpoint sync
+  useSessionCheckpoint();
+
+  // Hook up real-time SSE stream for active watchlist
+  useMarketStream({ symbols: existingSymbols, enabled: existingSymbols.length > 0 });
+
+  const connectionStatus = useMarketStore((state) => state.connectionStatus);
+
+  // Volatility sort vs custom sort state
+  const [sortBy, setSortBy] = useState<'volatility' | 'custom'>('custom');
+  const sortedItems = useVolatilitySortedList(activeItems, sortBy);
+
+  // Progressive AI summary coordination
+  const { retrySummary } = useSummaryRequest();
+
+  // Filter by watchlist search input
+  const filteredItems = watchlistSearch.trim()
+    ? sortedItems.filter((item) =>
+        item.symbol.toLowerCase().includes(watchlistSearch.trim().toLowerCase())
+      )
+    : sortedItems;
+
+  // Switch watchlist
+  const handleSelectWatchlist = (id: string) => {
+    setActiveWatchlistId(id);
+    setActiveWatchlistIdInStore(id);
+    const selected = watchlists.find((w) => w.id === id);
+    if (selected) {
+      const symbols = (selected.items || []).map((i) => i.symbol);
+      setWatchlistSymbols(symbols);
+    }
+  };
+
+  // Create watchlist
+  const handleCreateWatchlist = async (name: string) => {
+    try {
+      const created = await watchlistService.createWatchlist(name);
+      setWatchlists((prev) => [...prev, created]);
+      handleSelectWatchlist(created.id);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to create watchlist');
+    }
+  };
+
+  // Rename watchlist
+  const handleRenameWatchlist = async (id: string, name: string) => {
+    try {
+      const renamed = await watchlistService.renameWatchlist(id, name);
+      setWatchlists((prev) => prev.map((w) => (w.id === id ? { ...w, name: renamed.name } : w)));
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to rename watchlist');
+    }
+  };
+
+  // Delete watchlist
+  const handleDeleteWatchlist = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this watchlist?')) return;
+    try {
+      await watchlistService.deleteWatchlist(id);
+      const remaining = watchlists.filter((w) => w.id !== id);
+      setWatchlists(remaining);
+      if (remaining.length > 0) {
+        handleSelectWatchlist(remaining[0].id);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to delete watchlist');
+    }
+  };
+
+  // Add symbol to active watchlist
+  const handleAddSymbol = async (symbol: string) => {
+    if (!activeWatchlistId) return;
+    try {
+      const addedItem = await watchlistService.addItem(activeWatchlistId, symbol);
+      setWatchlists((prev) =>
+        prev.map((w) => {
+          if (w.id === activeWatchlistId) {
+            const updatedItems = [...(w.items || []), addedItem];
+            return { ...w, items: updatedItems, item_count: updatedItems.length };
+          }
+          return w;
+        })
+      );
+      setWatchlistSymbols([...existingSymbols, symbol]);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to add symbol');
+    }
+  };
+
+  // Remove symbol from active watchlist
+  const handleRemoveSymbol = async (symbol: string) => {
+    if (!activeWatchlistId) return;
+    try {
+      await watchlistService.removeItem(activeWatchlistId, symbol);
+      setWatchlists((prev) =>
+        prev.map((w) => {
+          if (w.id === activeWatchlistId) {
+            const updatedItems = (w.items || []).filter((i) => i.symbol !== symbol);
+            return { ...w, items: updatedItems, item_count: updatedItems.length };
+          }
+          return w;
+        })
+      );
+      setWatchlistSymbols(existingSymbols.filter((s) => s !== symbol));
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to remove symbol');
+    }
+  };
+
+  // Reorder symbols
+  const handleMoveSymbol = async (index: number, direction: 'up' | 'down') => {
+    if (!activeWatchlistId || !activeWatchlist) return;
+    const items = [...activeItems];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    // Swap
+    const temp = items[index];
+    items[index] = items[targetIndex];
+    items[targetIndex] = temp;
+
+    const newSymbolsOrder = items.map((i) => i.symbol);
+    try {
+      const reordered = await watchlistService.reorderItems(activeWatchlistId, newSymbolsOrder);
+      setWatchlists((prev) =>
+        prev.map((w) => (w.id === activeWatchlistId ? { ...w, items: reordered } : w))
+      );
+      setWatchlistSymbols(newSymbolsOrder);
+    } catch (err: any) {
+      console.error('Failed to reorder symbols:', err);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#F4F5F7' }}>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ZONE A: Main Top Navigation Bar (Groww-style white bar)
+      ══════════════════════════════════════════════════════════════════════════ */}
+      <header
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderBottom: '1px solid #E8E9EB',
+          padding: '0 24px',
+          height: '56px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'sticky',
+          top: 0,
+          zIndex: 60,
+          gap: '16px',
+        }}
+      >
+        {/* Left: Logo + Nav links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+          {/* Groww Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '32px' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #00D09C 0%, #00B386 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {/* Simple "G" logo mark */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c5.52 0 10-4.48 10-10S17.52 2 12 2zm3 13h-4v-2h2v-2h-2c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2h4v2h-4v2h2c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2z" fill="white"/>
+              </svg>
+            </div>
+            <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#44475B', letterSpacing: '-0.02em' }}>
+              Groww
+            </span>
+          </div>
+
+          {/* Nav links */}
+          {['Stocks', 'F&O', 'Mutual Funds'].map((link) => (
+            <button
+              key={link}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '0 14px',
+                height: '56px',
+                fontSize: '0.88rem',
+                fontWeight: 500,
+                color: '#7C7E8C',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#44475B'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#7C7E8C'; }}
+            >
+              {link}
+            </button>
+          ))}
+        </div>
+
+        {/* Center: Global Search */}
+        <div
+          style={{
+            flex: 1,
+            maxWidth: '420px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '7px 14px',
+            backgroundColor: '#F4F5F7',
+            border: '1px solid #E8E9EB',
+            borderRadius: '8px',
+            cursor: 'text',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#AAACB8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span style={{ fontSize: '0.85rem', color: '#AAACB8', flex: 1 }}>Search Groww...</span>
+          <span
+            style={{
+              fontSize: '0.7rem',
+              color: '#AAACB8',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              border: '1px solid #E8E9EB',
+              backgroundColor: '#FFFFFF',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            Ctrl+K
+          </span>
+        </div>
+
+        {/* Right: Connection Status + Bell + Avatar + Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Live feed pill */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '16px',
+              backgroundColor:
+                connectionStatus === 'connected'
+                  ? 'rgba(0, 208, 156, 0.08)'
+                  : connectionStatus === 'connecting'
+                  ? 'rgba(255, 176, 32, 0.08)'
+                  : 'rgba(235, 91, 60, 0.08)',
+              border: `1px solid ${
+                connectionStatus === 'connected'
+                  ? 'rgba(0, 208, 156, 0.25)'
+                  : connectionStatus === 'connecting'
+                  ? 'rgba(255, 176, 32, 0.25)'
+                  : 'rgba(235, 91, 60, 0.25)'
+              }`,
+              fontSize: '0.73rem',
+              color:
+                connectionStatus === 'connected'
+                  ? '#00D09C'
+                  : connectionStatus === 'connecting'
+                  ? 'var(--color-amber)'
+                  : 'var(--color-red)',
+              fontWeight: 500,
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor:
+                  connectionStatus === 'connected'
+                    ? '#00D09C'
+                    : connectionStatus === 'connecting'
+                    ? 'var(--color-amber)'
+                    : 'var(--color-red)',
+              }}
+            />
+            {connectionStatus === 'connected'
+              ? 'Live'
+              : connectionStatus === 'connecting'
+              ? 'Connecting...'
+              : 'Offline'}
+          </div>
+
+          {/* Notification Bell */}
+          <button
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#7C7E8C',
+              padding: '4px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background-color 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F4F5F7'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+            title="Notifications"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </button>
+
+          {/* User avatar */}
+          <div
+            title={user?.email || 'User Account'}
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #00D09C, #00B386)',
+              color: '#FFFFFF',
+              fontWeight: 700,
+              fontSize: '0.88rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+              userSelect: 'none',
+            }}
+          >
+            {user?.email ? user.email.trim()[0].toUpperCase() : 'U'}
+          </div>
+
+          {/* Logout */}
+          <button
+            onClick={onLogout}
+            title="Log Out"
+            style={{
+              background: 'transparent',
+              border: '1px solid #E8E9EB',
+              color: '#7C7E8C',
+              padding: '5px 12px',
+              borderRadius: '16px',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#44475B';
+              e.currentTarget.style.borderColor = '#AAACB8';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#7C7E8C';
+              e.currentTarget.style.borderColor = '#E8E9EB';
+            }}
+          >
+            Log Out
+          </button>
+        </div>
+      </header>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ZONE B: Global Indices Ticker Bar
+      ══════════════════════════════════════════════════════════════════════════ */}
+      <div
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderBottom: '1px solid #E8E9EB',
+          padding: '0 24px',
+          height: '38px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0',
+          overflowX: 'auto',
+          flexShrink: 0,
+        }}
+      >
+        {MOCK_INDICES.map((idx, i) => (
+          <div
+            key={idx.name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '0 20px 0 (i === 0 ? 0 : 20)',
+              borderRight: i < MOCK_INDICES.length - 1 ? '1px solid #F0F0F2' : 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#44475B' }}>
+              {idx.name}
+            </span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#44475B' }}>
+              {idx.price}
+            </span>
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: idx.up ? '#00D09C' : '#EB5B3C',
+              }}
+            >
+              {idx.change} ({idx.pct})
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ZONE C: Page-level nav (Explore / Holdings / Positions / Watchlist)
+      ══════════════════════════════════════════════════════════════════════════ */}
+      <div
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderBottom: '1px solid #E8E9EB',
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0',
+        }}
+      >
+        {['Explore', 'Holdings', 'Positions', 'Orders', 'Watchlist'].map((tab) => {
+          const isActiveTab = tab === 'Watchlist';
+          return (
+            <button
+              key={tab}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '13px 16px 11px',
+                fontSize: '0.88rem',
+                fontWeight: isActiveTab ? 700 : 500,
+                color: isActiveTab ? '#44475B' : '#7C7E8C',
+                borderBottom: isActiveTab ? '2px solid #44475B' : '2px solid transparent',
+                transition: 'color 0.15s ease',
+                position: 'relative',
+                top: '1px',
+              }}
+              onMouseEnter={(e) => { if (!isActiveTab) e.currentTarget.style.color = '#44475B'; }}
+              onMouseLeave={(e) => { if (!isActiveTab) e.currentTarget.style.color = '#7C7E8C'; }}
+            >
+              {tab}
+            </button>
+          );
+        })}
+        {/* Terminal button on right */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            style={{
+              background: 'none',
+              border: '1px solid #E8E9EB',
+              cursor: 'pointer',
+              padding: '5px 12px',
+              borderRadius: '6px',
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              color: '#7C7E8C',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            Terminal
+          </button>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          ZONE D: Main Content Body
+      ══════════════════════════════════════════════════════════════════════════ */}
+      <main style={{ flex: 1, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }}>
+
+        {/* White container card wrapping the entire watchlist area */}
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #E8E9EB',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+          }}
+        >
+
+          {/* ── D1: Watchlist Tab Bar ─────────────────────────────────────── */}
+          <WatchlistSidebar
+            watchlists={watchlists}
+            activeWatchlistId={activeWatchlistId}
+            onSelectWatchlist={handleSelectWatchlist}
+            onCreateWatchlist={handleCreateWatchlist}
+            onRenameWatchlist={handleRenameWatchlist}
+            onDeleteWatchlist={handleDeleteWatchlist}
+          />
+
+          {/* ── D2: Action Bar ────────────────────────────────────────────── */}
+          <div
+            style={{
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              borderBottom: '1px solid #E8E9EB',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Left: Watchlist search */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '7px 12px',
+                border: '1px solid #E8E9EB',
+                borderRadius: '8px',
+                backgroundColor: '#FFFFFF',
+                width: '260px',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#AAACB8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+              <input
+                type="text"
+                value={watchlistSearch}
+                onChange={(e) => setWatchlistSearch(e.target.value)}
+                placeholder="Search your watchlist"
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-primary)',
+                  backgroundColor: 'transparent',
+                  width: '100%',
+                }}
+              />
+            </div>
+
+            {/* Right: Action buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Volatility Triage + Custom Order */}
+              <SortToggle sortBy={sortBy} onChange={setSortBy} />
+
+              {/* Divider */}
+              <div style={{ width: '1px', height: '20px', backgroundColor: '#E8E9EB' }} />
+
+              {/* Add stocks */}
+              <AddSymbolSearch
+                onAddSymbol={handleAddSymbol}
+                existingSymbols={existingSymbols}
+              />
+
+              {/* Edit button */}
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 14px',
+                  border: '1px solid #E8E9EB',
+                  borderRadius: '16px',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.82rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#AAACB8'; e.currentTarget.style.color = '#44475B'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8E9EB'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Edit
+              </button>
+            </div>
+          </div>
+
+          {/* ── D3: Meaningful Changes Carousel (Zone 1) ──────────────────── */}
+          {/* Only shown when there are alerts */}
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #E8E9EB' }}>
+            <AlertCarousel onRetrySummary={retrySummary} />
+          </div>
+
+          {/* ── D4: Sticky Table Header ───────────────────────────────────── */}
+          <div
+            className="wl-table-grid"
+            style={{
+              padding: '0 16px',
+              height: '40px',
+              backgroundColor: '#FAFAFA',
+              borderBottom: '1px solid #E8E9EB',
+              position: 'sticky',
+              top: '0',
+              zIndex: 10,
+            }}
+          >
+            {/* Company (N) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={colHeaderStyle}>
+                Company ({filteredItems.length})
+              </span>
+              <SortArrow />
+            </div>
+
+            {/* Trend */}
+            <div style={colHeaderStyle}>Trend</div>
+
+            {/* Mkt price */}
+            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+              <span>Mkt price</span>
+              <SortArrow />
+            </div>
+
+            {/* Change (since exit) */}
+            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+              <span>Change (since exit)</span>
+              <SortArrow />
+            </div>
+
+            {/* Volume */}
+            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+              <span>Volume</span>
+              <SortArrow />
+            </div>
+
+            {/* 52W perf */}
+            <div style={colHeaderStyle}>52W perf</div>
+
+            {/* Actions (empty header) */}
+            <div />
+          </div>
+
+          {/* ── D5: Ticker Rows ───────────────────────────────────────────── */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loading ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>⏳</div>
+                Loading watchlist items...
+              </div>
+            ) : error ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#EB5B3C' }}>
+                {error}
+              </div>
+            ) : activeItems.length === 0 ? (
+              <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📭</div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  No stocks in this watchlist
+                </div>
+                <div style={{ fontSize: '0.82rem' }}>
+                  Use the search bar above to add liquid stocks from the catalog.
+                </div>
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>🔍</div>
+                <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>
+                  No stocks match "{watchlistSearch}"
+                </div>
+              </div>
+            ) : (
+              filteredItems.map((item, idx) => (
+                <TickerRow
+                  key={item.id}
+                  symbol={item.symbol}
+                  index={idx}
+                  isFirst={idx === 0}
+                  isLast={idx === filteredItems.length - 1}
+                  onMoveUp={() => handleMoveSymbol(idx, 'up')}
+                  onMoveDown={() => handleMoveSymbol(idx, 'down')}
+                  onRemove={() => handleRemoveSymbol(item.symbol)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+const colHeaderStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  fontWeight: 500,
+  color: '#7C7E8C',
+  textTransform: 'none',
+  letterSpacing: '0',
+  userSelect: 'none',
+};
+
+const SortArrow: React.FC = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#AAACB8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <path d="M12 5v14M5 12l7-7 7 7" />
+  </svg>
+);
