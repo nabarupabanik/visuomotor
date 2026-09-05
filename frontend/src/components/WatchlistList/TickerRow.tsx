@@ -149,12 +149,12 @@ export const TickerRow: React.FC<TickerRowProps> = ({
       </div>
 
       {/* ── Col 2: Trend Sparkline ─────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'center' }}>
         <MicroSparkline data={sparklineData} width={96} height={26} />
       </div>
 
       {/* ── Col 3: Market Price ────────────────────────────────────────────── */}
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ textAlign: 'right', justifySelf: 'end' }}>
         <span
           ref={priceRef}
           style={{
@@ -170,7 +170,7 @@ export const TickerRow: React.FC<TickerRowProps> = ({
       </div>
 
       {/* ── Col 4: Change (since exit) ─────────────────────────────────────── */}
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ textAlign: 'right', justifySelf: 'end' }}>
         <span
           style={{
             fontSize: '0.85rem',
@@ -191,14 +191,14 @@ export const TickerRow: React.FC<TickerRowProps> = ({
       </div>
 
       {/* ── Col 5: Volume ─────────────────────────────────────────────────── */}
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ textAlign: 'right', justifySelf: 'end' }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
           {volume !== null ? formatVolume(volume) : '—'}
         </span>
       </div>
 
       {/* ── Col 6: 52W Perf Bar ────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifySelf: 'end', width: '100%' }}>
         <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0 }}>L</span>
         <div
           style={{

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { authService, UserProfile } from '../services/authService';
 import { watchlistService, WatchlistDto } from '../services/watchlistService';
 import { useSessionStore } from '../store/sessionStore';
@@ -12,6 +12,18 @@ import { AlertCarousel } from '../components/AlertCarousel/AlertCarousel';
 import { SortToggle } from '../components/WatchlistList/SortToggle';
 import { useVolatilitySortedList } from '../hooks/useVolatilitySortedList';
 import { useSummaryRequest } from '../hooks/useSummaryRequest';
+
+// ── Column sort types ─────────────────────────────────────────────────────────
+type SortKey = 'company' | 'price' | 'change' | 'volume';
+type SortDir = 'asc' | 'desc';
+interface SortConfig { key: SortKey | null; dir: SortDir | null; }
+
+/** Cycles: null → asc → desc → null */
+function cycleSort(current: SortConfig, key: SortKey): SortConfig {
+  if (current.key !== key) return { key, dir: 'asc' };
+  if (current.dir === 'asc')  return { key, dir: 'desc' };
+  return { key: null, dir: null };
+}
 
 interface WatchlistPageProps {
   onLogout: () => void;
@@ -82,19 +94,91 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
 
   const connectionStatus = useMarketStore((state) => state.connectionStatus);
 
-  // Volatility sort vs custom sort state
+  // ── Volatility sort vs custom sort (existing) ─────────────────────────────
   const [sortBy, setSortBy] = useState<'volatility' | 'custom'>('custom');
   const sortedItems = useVolatilitySortedList(activeItems, sortBy);
+
+  // ── Column header sort state ──────────────────────────────────────────────
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: null, dir: null });
+
+  const handleColumnSort = useCallback((key: SortKey) => {
+    setSortConfig((prev) => cycleSort(prev, key));
+  }, []);
+
+  // Subscribe to live ticks snapshot + checkpoint for sort comparators.
+  // Using shallow-equal selector on the whole ticks map so we only re-derive
+  // the sorted list when a tick actually changes — not on every render.
+  const ticks      = useMarketStore((state) => state.ticks);
+  const checkpoint = useSessionStore((state) => state.checkpoint);
+
+  // ── memoized column-sorted list ──────────────────────────────────────────
+  // Runs AFTER useVolatilitySortedList so column sort is a secondary layer.
+  // When sortConfig.key is null it returns the list unchanged (preserving
+  // volatility / custom order), so the existing UX is completely unaffected.
+  const columnSortedItems = useMemo(() => {
+    if (!sortConfig.key) return sortedItems;
+
+    const dir = sortConfig.dir === 'asc' ? 1 : -1;
+
+    return [...sortedItems].sort((a, b) => {
+      switch (sortConfig.key) {
+        // ── Company: alphabetical by symbol ───────────────────────────
+        case 'company':
+          return dir * a.symbol.localeCompare(b.symbol);
+
+        // ── Mkt price: ltp in paise (integer) ─────────────────────────
+        case 'price': {
+          const pa = ticks[a.symbol]?.ltp ?? null;
+          const pb = ticks[b.symbol]?.ltp ?? null;
+          // Nulls always sink to the bottom regardless of direction
+          if (pa === null && pb === null) return 0;
+          if (pa === null) return 1;
+          if (pb === null) return -1;
+          return dir * (pa - pb);
+        }
+
+        // ── Change (since exit): basis points derived from checkpoint ──
+        case 'change': {
+          const prices = checkpoint?.last_seen_prices ?? {};
+          const calcBps = (symbol: string): number | null => {
+            const last = prices[symbol];
+            const ltp  = ticks[symbol]?.ltp;
+            if (!last || last <= 0 || !ltp) return null;
+            return ((ltp - last) / last) * 10000;
+          };
+          const da = calcBps(a.symbol);
+          const db = calcBps(b.symbol);
+          if (da === null && db === null) return 0;
+          if (da === null) return 1;
+          if (db === null) return -1;
+          return dir * (da - db);
+        }
+
+        // ── Volume: raw integer ────────────────────────────────────────
+        case 'volume': {
+          const va = ticks[a.symbol]?.volume ?? null;
+          const vb = ticks[b.symbol]?.volume ?? null;
+          if (va === null && vb === null) return 0;
+          if (va === null) return 1;
+          if (vb === null) return -1;
+          return dir * (va - vb);
+        }
+
+        default:
+          return 0;
+      }
+    });
+  }, [sortedItems, sortConfig, ticks, checkpoint]);
 
   // Progressive AI summary coordination
   const { retrySummary } = useSummaryRequest();
 
-  // Filter by watchlist search input
+  // Filter by watchlist search input (applied last, on top of column sort)
   const filteredItems = watchlistSearch.trim()
-    ? sortedItems.filter((item) =>
+    ? columnSortedItems.filter((item) =>
         item.symbol.toLowerCase().includes(watchlistSearch.trim().toLowerCase())
       )
-    : sortedItems;
+    : columnSortedItems;
 
   // Switch watchlist
   const handleSelectWatchlist = (id: string) => {
@@ -673,48 +757,57 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
           <div
             className="wl-table-grid"
             style={{
-              padding: '0 16px',
-              height: '40px',
-              backgroundColor: '#FAFAFA',
+              padding: '12px 16px',
+              backgroundColor: '#F4F5F7',
               borderBottom: '1px solid #E8E9EB',
               position: 'sticky',
-              top: '0',
+              top: 0,
               zIndex: 10,
             }}
           >
-            {/* Company (N) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={colHeaderStyle}>
-                Company ({filteredItems.length})
-              </span>
-              <SortArrow />
-            </div>
+            {/* Col 1: Company — left-aligned, sortable */}
+            <SortableHeader
+              label={`Company (${filteredItems.length})`}
+              sortKey="company"
+              justify="flex-start"
+              sortConfig={sortConfig}
+              onClick={handleColumnSort}
+            />
 
-            {/* Trend */}
-            <div style={colHeaderStyle}>Trend</div>
+            {/* Col 2: Trend — centre-aligned, not sortable */}
+            <div style={{ ...colHeaderStyle, justifySelf: 'center' }}>Trend</div>
 
-            {/* Mkt price */}
-            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-              <span>Mkt price</span>
-              <SortArrow />
-            </div>
+            {/* Col 3: Mkt price — right-aligned, sortable */}
+            <SortableHeader
+              label="Mkt price"
+              sortKey="price"
+              justify="flex-end"
+              sortConfig={sortConfig}
+              onClick={handleColumnSort}
+            />
 
-            {/* Change (since exit) */}
-            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-              <span>Change (since exit)</span>
-              <SortArrow />
-            </div>
+            {/* Col 4: Change (since exit) — right-aligned, sortable */}
+            <SortableHeader
+              label="Change (since exit)"
+              sortKey="change"
+              justify="flex-end"
+              sortConfig={sortConfig}
+              onClick={handleColumnSort}
+            />
 
-            {/* Volume */}
-            <div style={{ ...colHeaderStyle, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-              <span>Volume</span>
-              <SortArrow />
-            </div>
+            {/* Col 5: Volume — right-aligned, sortable */}
+            <SortableHeader
+              label="Volume"
+              sortKey="volume"
+              justify="flex-end"
+              sortConfig={sortConfig}
+              onClick={handleColumnSort}
+            />
 
-            {/* 52W perf */}
-            <div style={colHeaderStyle}>52W perf</div>
+            {/* Col 6: 52W perf — right-aligned, not sortable */}
+            <div style={{ ...colHeaderStyle, justifySelf: 'flex-end' }}>52W perf</div>
 
-            {/* Actions (empty header) */}
+            {/* Col 7: Actions — empty */}
             <div />
           </div>
 
@@ -770,16 +863,81 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const colHeaderStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+  fontSize: '13px',
   fontWeight: 500,
   color: '#7C7E8C',
-  textTransform: 'none',
-  letterSpacing: '0',
   userSelect: 'none',
+  whiteSpace: 'nowrap',
 };
 
-const SortArrow: React.FC = () => (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#AAACB8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-    <path d="M12 5v14M5 12l7-7 7 7" />
+/** Double-caret ↕ — shown when column is not actively sorted */
+const DoubleCaret: React.FC = () => (
+  <svg width="10" height="14" viewBox="0 0 10 14" fill="none" style={{ flexShrink: 0, display: 'block' }}>
+    <path d="M5 1L1.5 5h7L5 1z" fill="#AAACB8" />
+    <path d="M5 13L8.5 9h-7L5 13z" fill="#AAACB8" />
   </svg>
 );
+
+/** Single up-arrow — shown when column sorted asc */
+const ArrowUp: React.FC<{ color: string }> = ({ color }) => (
+  <svg width="10" height="12" viewBox="0 0 10 12" fill="none" style={{ flexShrink: 0, display: 'block' }}>
+    <path d="M5 1L1 6h3v5h2V6h3L5 1z" fill={color} />
+  </svg>
+);
+
+/** Single down-arrow — shown when column sorted desc */
+const ArrowDown: React.FC<{ color: string }> = ({ color }) => (
+  <svg width="10" height="12" viewBox="0 0 10 12" fill="none" style={{ flexShrink: 0, display: 'block' }}>
+    <path d="M5 11L9 6H6V1H4v5H1L5 11z" fill={color} />
+  </svg>
+);
+
+
+
+
+interface SortableHeaderProps {
+  label: string;
+  sortKey: SortKey;
+  justify: 'flex-start' | 'flex-end' | 'center';
+  sortConfig: SortConfig;
+  onClick: (key: SortKey) => void;
+}
+
+/** Clickable sortable column header — visually reflects active/inactive sort state */
+const SortableHeader: React.FC<SortableHeaderProps> = ({ label, sortKey, justify, sortConfig, onClick }) => {
+  const isActive = sortConfig.key === sortKey;
+  const activeColor = '#44475B';
+  const idleColor   = '#7C7E8C';
+  const color = isActive ? activeColor : idleColor;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onClick(sortKey)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(sortKey); }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: justify,
+        justifySelf: justify,
+        gap: '4px',
+        cursor: 'pointer',
+        color,
+        fontSize: '13px',
+        fontWeight: isActive ? 600 : 500,
+        whiteSpace: 'nowrap',
+        userSelect: 'none',
+        transition: 'color 0.15s ease',
+      }}
+      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = activeColor; }}
+      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = idleColor; }}
+    >
+      <span>{label}</span>
+      {isActive && sortConfig.dir === 'asc'  && <ArrowUp   color="#00D09C" />}
+      {isActive && sortConfig.dir === 'desc' && <ArrowDown color="#00D09C" />}
+      {!isActive && <DoubleCaret />}
+    </div>
+  );
+};
+

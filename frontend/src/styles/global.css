@@ -141,8 +141,13 @@ body {
 }
 
 /* ── Groww Table Column Layout (shared between header & rows) ──────────────── */
+/*
+  Columns: Company | Trend | Mkt price | Change (since exit) | Volume | 52W perf | Actions
+  Using fr units so the table scales with the container — no fixed-px overflow.
+*/
 .wl-table-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 2fr) 120px 140px 160px 120px 120px 44px;
+  grid-template-columns: 2.5fr 1.5fr 1.2fr 1.5fr 1.2fr 1.5fr 36px;
+  column-gap: 16px;
   align-items: center;
 }
