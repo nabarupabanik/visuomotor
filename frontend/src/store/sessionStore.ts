@@ -16,6 +16,28 @@ export interface SessionCheckpoint {
   last_seen_prices: Record<string, number>;   // { RELIANCE: 248500 } (paise)
 }
 
+function loadInitialExitCheckpoint(): SessionCheckpoint | null {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('wl_exit_snapshot') : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.price_snapshot && parsed.last_seen_ts) {
+        const cleanPrices: Record<string, number> = {};
+        for (const [sym, price] of Object.entries(parsed.price_snapshot)) {
+          cleanPrices[sym] = Math.round(Number(price));
+        }
+        return {
+          last_seen_ts: Number(parsed.last_seen_ts),
+          last_seen_prices: cleanPrices,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to parse initial exit snapshot in sessionStore:', err);
+  }
+  return null;
+}
+
 interface SessionState {
   // Auth
   userId: string | null;
@@ -44,13 +66,13 @@ interface SessionState {
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
-      // Initial state
+      // Initial state with instant optimistic hydration
       userId: null,
       accessToken: null,
       watchlistId: null,
       watchlistName: '',
       watchlistSymbols: [],
-      checkpoint: null,
+      checkpoint: loadInitialExitCheckpoint(),
 
       // Set auth after login/register
       setAuth: (userId, accessToken) =>
@@ -79,7 +101,21 @@ export const useSessionStore = create<SessionState>()(
       loadServerCheckpoint: (serverCheckpoint) =>
         set((state) => {
           const localTs = state.checkpoint?.last_seen_ts ?? 0;
-          if (serverCheckpoint.last_seen_ts > localTs) {
+          if (serverCheckpoint.last_seen_ts >= localTs) {
+            try {
+              if (typeof window !== 'undefined') {
+                const currentSnapshot = localStorage.getItem('wl_exit_snapshot');
+                const parsed = currentSnapshot ? JSON.parse(currentSnapshot) : {};
+                localStorage.setItem(
+                  'wl_exit_snapshot',
+                  JSON.stringify({
+                    ...parsed,
+                    last_seen_ts: serverCheckpoint.last_seen_ts,
+                    price_snapshot: serverCheckpoint.last_seen_prices,
+                  })
+                );
+              }
+            } catch {}
             return { checkpoint: serverCheckpoint };
           }
           return {};  // local is newer, keep it

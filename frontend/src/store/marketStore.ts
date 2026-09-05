@@ -57,9 +57,50 @@ export interface MarketStore {
   reset: () => void;
 }
 
+function loadInitialMarketSnapshot(): {
+  ticks: Record<string, TickData>;
+  alerts: AlertData[];
+} {
+  const initialTicks: Record<string, TickData> = {};
+  let initialAlerts: AlertData[] = [];
+
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('wl_exit_snapshot') : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed) {
+        if (parsed.price_snapshot && typeof parsed.price_snapshot === 'object') {
+          const nowEpoch = Math.floor(Date.now() / 1000);
+          for (const [sym, price] of Object.entries(parsed.price_snapshot)) {
+            const intPrice = Math.round(Number(price));
+            if (intPrice > 0) {
+              initialTicks[sym] = {
+                ltp: intPrice,
+                volume: 1200,
+                anomalyScore: 0.1,
+                triggerCode: 0,
+                sparklineTs: nowEpoch,
+              };
+            }
+          }
+        }
+        if (Array.isArray(parsed.alerts) && parsed.alerts.length > 0) {
+          initialAlerts = parsed.alerts;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to parse initial market snapshot in marketStore:', err);
+  }
+
+  return { ticks: initialTicks, alerts: initialAlerts };
+}
+
+const initialMarket = loadInitialMarketSnapshot();
+
 export const useMarketStore = create<MarketStore>((set) => ({
-  ticks: {},
-  alerts: [],
+  ticks: initialMarket.ticks,
+  alerts: initialMarket.alerts,
   expandedAlertSymbol: null,
   connectionStatus: 'disconnected',
   lastTickTimestamp: null,
@@ -90,20 +131,24 @@ export const useMarketStore = create<MarketStore>((set) => ({
 
       const sessionState = useSessionStore.getState();
       const currentPrice = Number(tick.ltp ?? (tick as any).p) || 100000;
-      const baselinePrice =
+
+      // 1. Get the true baseline from the session store
+      const actualBaseline =
         Number(sessionState?.checkpoint?.last_seen_prices?.[symbol]) ||
-        Number((sessionState as any)?.last_seen_prices?.[symbol]) ||
-        currentPrice;
+        Number((sessionState as any)?.last_seen_prices?.[symbol]);
+      const referencePrice = actualBaseline && actualBaseline > 0 ? actualBaseline : currentPrice;
+
       const exitTimestamp =
         (sessionState?.checkpoint?.last_seen_ts ? sessionState.checkpoint.last_seen_ts * 1000 : 0) ||
         (Date.now() - 3600000 * 3.25); // default fallback ~3h 15m ago
 
+      // 2. Calculate the delta strictly from the referencePrice
       const calculatedDeltaBps =
-        baselinePrice > 0 ? Math.round(((currentPrice - baselinePrice) / baselinePrice) * 10000) : 0;
+        referencePrice > 0 ? Math.round(((currentPrice - referencePrice) / referencePrice) * 10000) : 0;
 
       const tickMetrics = tick.metrics || (tick as any).m || {};
-      const dayHigh = Number(tickMetrics.day_high ?? tickMetrics.dayHigh) || Math.max(currentPrice, baselinePrice);
-      const dayLow = Number(tickMetrics.day_low ?? tickMetrics.dayLow) || Math.min(currentPrice, baselinePrice);
+      const dayHigh = Number(tickMetrics.day_high ?? tickMetrics.dayHigh) || Math.max(currentPrice, referencePrice);
+      const dayLow = Number(tickMetrics.day_low ?? tickMetrics.dayLow) || Math.min(currentPrice, referencePrice);
       const volMultiplier = Number(tickMetrics.vol_multiplier ?? tickMetrics.volMultiplier) || 2.85;
       const zScore = Number(tickMetrics.z_score ?? tickMetrics.zScore) || parseFloat((calculatedDeltaBps / 100.0).toFixed(2));
       const filingUrl = `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${symbol}`;
@@ -113,9 +158,11 @@ export const useMarketStore = create<MarketStore>((set) => ({
         a.symbol === symbol
           ? {
               ...a,
-              currentPrice: currentPrice || a.currentPrice || baselinePrice,
-              deltaBps: calculatedDeltaBps ?? a.deltaBps ?? 0,
+              baselinePrice: referencePrice, // <-- MUST be the exact same referencePrice variable
+              currentPrice: currentPrice,
+              deltaBps: calculatedDeltaBps,
               metrics: {
+                ...a.metrics,
                 volMultiplier: a.metrics?.volMultiplier ?? volMultiplier,
                 zScore: a.metrics?.zScore ?? zScore,
                 dayHigh: Math.max(a.metrics?.dayHigh ?? dayHigh, currentPrice),
@@ -136,7 +183,7 @@ export const useMarketStore = create<MarketStore>((set) => ({
               symbol,
               deltaBps: calculatedDeltaBps,
               triggerCode,
-              baselinePrice,
+              baselinePrice: referencePrice, // <-- MUST be the exact same referencePrice variable
               currentPrice,
               exitTimestamp,
               metrics: {

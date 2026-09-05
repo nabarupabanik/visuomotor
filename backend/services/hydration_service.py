@@ -37,39 +37,63 @@ def build_hydration_payload(
 
     alerts: List[List[Any]] = []
 
+    from ..utils.redis_keys import tick_latest
+    import json
+
     for sym in symbols:
-        last_price = last_seen_prices.get(sym)
-        if not last_price or last_price <= 0:
+        sym_upper = str(sym).upper()
+        raw_last = last_seen_prices.get(sym_upper) or last_seen_prices.get(sym)
+        if not raw_last or raw_last <= 0:
             continue
 
-        current_price = broadcaster.get_latest_price(sym)
+        last_price = int(round(float(raw_last)))
+
+        # 1. Quickly query Redis cache for current live price
+        current_price = None
+        try:
+            cached = redis_client.get(tick_latest(sym_upper))
+            if cached:
+                cached_data = json.loads(cached)
+                current_price = int(round(float(cached_data.get("p") or cached_data.get("ltp") or 0)))
+        except Exception:
+            pass
+
+        # 2. Fall back to broadcaster's active in-memory price if Redis cache miss
+        if not current_price or current_price <= 0:
+            current_price = broadcaster.get_latest_price(sym_upper)
+
+        current_price = int(round(float(current_price)))
         delta_bps = int(round(((current_price - last_price) / last_price) * 10000))
 
-        # Check if magnitude warrants an alert card on re-entry (e.g. > 150 bps or < -150 bps)
+        # Check if magnitude warrants an alert card on re-entry
         trigger_code = 0
         if delta_bps >= 250:
             trigger_code = 3  # Volatility breakout
         elif delta_bps <= -250:
             trigger_code = 2  # Price plunge
-        elif abs(delta_bps) >= 150:
+        elif abs(delta_bps) >= 100:
             trigger_code = 1  # Volume / Price shift
+        elif abs(delta_bps) >= 50:
+            trigger_code = 1
 
         if trigger_code > 0:
-            engine = get_anomaly_engine(sym)
+            engine = get_anomaly_engine(sym_upper)
             metrics = {
                 "vol_multiplier": 2.4,
                 "z_score": round(delta_bps / 100.0, 2),
                 "day_high": max(current_price, last_price, engine.day_high or current_price),
                 "day_low": min(current_price, last_price, engine.day_low if engine.day_low != float('inf') else current_price),
+                "baseline_price": last_price,
+                "current_price": current_price,
             }
-            filing_url = f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={sym}"
-            alerts.append([sym, delta_bps, trigger_code, metrics, filing_url])
+            filing_url = f"https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol={sym_upper}"
+            alerts.append([sym_upper, delta_bps, trigger_code, metrics, filing_url])
 
     # Sort alerts by absolute delta descending (top volatile first)
     alerts.sort(key=lambda x: abs(x[1]), reverse=True)
 
     return {
-        "ts": last_seen_ts or int(time.time()),
+        "ts": int(last_seen_ts) if last_seen_ts else int(time.time()),
         "mode": fallback_mode,
         "alerts": alerts[:5],  # top 5 volatile alerts
     }

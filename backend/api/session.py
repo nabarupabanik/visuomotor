@@ -41,9 +41,21 @@ def sync():
     if not payload_user_id:
         return jsonify({"error": "User identity required"}), 401
 
-    last_seen_ts = data.get("last_seen_ts", 0)
-    price_snapshot = data.get("price_snapshot", {})
-    device_hint = data.get("device_hint", "web")
+    try:
+        last_seen_ts = int(data.get("last_seen_ts") or 0)
+    except (ValueError, TypeError):
+        last_seen_ts = 0
+
+    raw_prices = data.get("price_snapshot") or {}
+    price_snapshot = {}
+    if isinstance(raw_prices, dict):
+        for sym, price in raw_prices.items():
+            try:
+                price_snapshot[str(sym).upper()] = int(round(float(price)))
+            except (ValueError, TypeError):
+                continue
+
+    device_hint = str(data.get("device_hint") or "web")
 
     checkpoint = sync_checkpoint(
         user_id=payload_user_id,

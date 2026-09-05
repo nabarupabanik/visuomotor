@@ -24,8 +24,8 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
   const deltaBps = Number(alert?.deltaBps) || 0;
   const isPositive = deltaBps >= 0;
 
-  const current = Number(alert?.currentPrice) || Number(alert?.baselinePrice) || 100000;
-  const baseline = Number(alert?.baselinePrice) || current;
+  const baseline = Number(alert?.baselinePrice) || Number(alert?.currentPrice) || 100000;
+  const current = Number(alert?.currentPrice) || baseline;
   const deltaPercent = (deltaBps / 100).toFixed(2);
 
   const volMultiplier = alert?.metrics?.volMultiplier !== undefined ? alert.metrics.volMultiplier : 'N/A';
@@ -196,7 +196,7 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#121212', letterSpacing: '-0.01em' }}>
-                ₹{((baseline || current) / 100).toFixed(2)} → ₹{(current / 100).toFixed(2)}
+                ₹{(baseline / 100).toFixed(2)} → ₹{(current / 100).toFixed(2)}
               </span>
               <span
                 style={{

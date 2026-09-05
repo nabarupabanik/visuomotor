@@ -4,6 +4,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { authService, getAccessToken, setAccessToken } from './services/authService';
 import { useSessionStore } from './store/sessionStore';
+import { captureExitSnapshot } from './utils/checkpoint';
 
 type AuthView = 'login' | 'register' | 'app';
 
@@ -37,6 +38,11 @@ export default function App() {
   }, [setUserId]);
 
   const handleLogout = async () => {
+    try {
+      await captureExitSnapshot(false);
+    } catch (err) {
+      console.error('Failed to capture exit snapshot on logout:', err);
+    }
     await authService.logout();
     setCurrentView('login');
   };
