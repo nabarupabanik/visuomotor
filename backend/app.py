@@ -23,16 +23,15 @@ def create_app(config_name: str = "development") -> Flask:
     # Ensure all tables exist and stock symbols are seeded
     with app.app_context():
         from .models import User, Watchlist, WatchlistItem, SessionCheckpoint, StockSymbol
+        
+        # 1. Guaranteed Table Creation
         try:
             db.create_all()
-            from .batch.seed_symbols import seed_stock_symbols
-            seed_stock_symbols(app)
-            # If full master catalog not yet populated, run sync
-            if StockSymbol.query.count() < 100 and not app.config.get("TESTING"):
-                from .batch.sync_master_instruments import sync_nse_master_instruments
-                sync_nse_master_instruments(app)
+        except Exception as err:
+            app.logger.error(f"Failed to create database tables: {err}")
 
-            # Auto-seed demo user trader@groww.in if not existing
+        # 2. Guaranteed Demo User Seeding
+        try:
             demo_user = User.query.filter_by(email="trader@groww.in").first()
             if not demo_user:
                 demo_user = User(email="trader@groww.in")
@@ -56,7 +55,18 @@ def create_app(config_name: str = "development") -> Flask:
                 app.logger.info("Demo user trader@groww.in seeded successfully.")
         except Exception as err:
             db.session.rollback()
-            app.logger.warning(f"Database auto-creation note: {err}")
+            app.logger.warning(f"Demo user auto-creation note: {err}")
+
+        # 3. Seed Reference Symbols & Catalog
+        try:
+            from .batch.seed_symbols import seed_stock_symbols
+            seed_stock_symbols(app)
+            if StockSymbol.query.count() < 100 and not app.config.get("TESTING"):
+                from .batch.sync_master_instruments import sync_nse_master_instruments
+                sync_nse_master_instruments(app)
+        except Exception as err:
+            db.session.rollback()
+            app.logger.warning(f"Catalog seeding note: {err}")
 
     if not scheduler.running and not app.config.get("TESTING"):
         try:

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { TRIGGER_LABELS, TRIGGER_COLORS, TriggerCode } from '../../constants/triggerCodes';
 import { AlertData } from '../../store/marketStore';
 import { CandlestickView } from './CandlestickView';
+import { formatAbsenceTime } from '../../utils/formatters';
 
 interface PlacardExpandedViewProps {
   alert: AlertData;
@@ -34,18 +35,6 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
   const volMultiplier = alert?.metrics?.volMultiplier !== undefined ? alert.metrics.volMultiplier : 'N/A';
   const zScore = alert?.metrics?.zScore !== undefined ? alert.metrics.zScore : 0;
 
-  // Absence Duration formatted helper
-  const absenceText = useMemo(() => {
-    if (!alert?.exitTimestamp) return 'Since you left 3h 15m ago';
-    const diffMs = Math.max(0, Date.now() - alert.exitTimestamp);
-    const diffMins = Math.floor(diffMs / 60000);
-    const hours = Math.floor(diffMins / 60);
-    const mins = diffMins % 60;
-    if (hours > 0) {
-      return `Since you left ${hours}h ${mins}m ago`;
-    }
-    return `Since you left ${mins || 1}m ago`;
-  }, [alert?.exitTimestamp]);
 
   // Intraday High/Low range calculation
   const dayHigh = Number(alert?.metrics?.dayHigh) || Math.max(current, baseline);
@@ -222,7 +211,7 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
                   padding: 0,
                 }}
               >
-                {absenceText}
+                {formatAbsenceTime(alert.exitTimestamp)}
               </span>
             </div>
           </div>

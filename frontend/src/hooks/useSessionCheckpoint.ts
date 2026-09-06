@@ -57,17 +57,27 @@ export function useSessionCheckpoint() {
           if (cpRes.data.checkpoint) {
             serverLastSeenPrices = cpRes.data.checkpoint.price_snapshot;
             loadServerCheckpoint({
+              user_id: userId,
               last_seen_ts: cpRes.data.checkpoint.last_seen_ts,
               last_seen_prices: cpRes.data.checkpoint.price_snapshot,
             });
+          } else {
+            // New user without server checkpoint - ensure no stale local snapshot remains
+            useSessionStore.setState({ checkpoint: null });
+            try {
+              if (userId) {
+                localStorage.removeItem('wl_exit_snapshot_' + userId);
+              }
+              localStorage.removeItem('wl_exit_snapshot');
+            } catch {}
           }
         } catch {}
 
         const sessionCheckpoint = useSessionStore.getState().checkpoint;
         const exitTs =
-          (res.data?.ts ? res.data.ts * 1000 : 0) ||
           (sessionCheckpoint?.last_seen_ts ? sessionCheckpoint.last_seen_ts * 1000 : 0) ||
-          (Date.now() - 3600000 * 3.25);
+          (res.data?.ts ? res.data.ts * 1000 : 0) ||
+          0;
 
         // 2. Transform positional tuples [symbol, delta_bps, trigger_code, metrics, filing_url]
         if (Array.isArray(alerts) && alerts.length > 0) {

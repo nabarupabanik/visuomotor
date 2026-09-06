@@ -73,6 +73,15 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
   const setWatchlistSymbols = useSessionStore((state) => state.setWatchlistSymbols);
   const setActiveWatchlistIdInStore = useSessionStore((state) => state.setActiveWatchlistId);
 
+  const handleLogoutClick = useCallback(() => {
+    const currentUserId = useSessionStore.getState().userId;
+    if (currentUserId) {
+      localStorage.removeItem('wl_exit_snapshot_' + currentUserId);
+    }
+    useMarketStore.getState().setAlerts([]); // Wipe the UI state
+    onLogout();
+  }, [onLogout]);
+
   // Load user and watchlists
   const loadData = useCallback(async () => {
     try {
@@ -95,12 +104,12 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
       console.error(err);
       setError('Failed to load watchlist data.');
       if (err.response?.status === 401) {
-        onLogout();
+        handleLogoutClick();
       }
     } finally {
       setLoading(false);
     }
-  }, [onLogout, setActiveWatchlistIdInStore, setWatchlistSymbols]);
+  }, [handleLogoutClick, setActiveWatchlistIdInStore, setWatchlistSymbols]);
 
   useEffect(() => {
     loadData();
@@ -537,7 +546,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
 
           {/* Logout */}
           <button
-            onClick={onLogout}
+            onClick={handleLogoutClick}
             title="Log Out"
             style={{
               background: 'transparent',

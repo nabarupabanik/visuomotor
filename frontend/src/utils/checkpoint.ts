@@ -24,9 +24,14 @@ export async function captureExitSnapshot(
   isUnloading: boolean = false
 ): Promise<ExitSnapshotPayload | null> {
   const sessionState = useSessionStore.getState();
-  const marketState = useMarketStore.getState();
-
   const userId = sessionState.userId;
+
+  // Abort if not authenticated (do not save snapshot for unauthenticated states)
+  if (!userId) {
+    return null;
+  }
+
+  const marketState = useMarketStore.getState();
   const watchlistSymbols = sessionState.watchlistSymbols || [];
   const ticks = marketState.ticks || {};
   const currentAlerts = marketState.alerts || [];
@@ -54,16 +59,16 @@ export async function captureExitSnapshot(
   }
 
   const payload: ExitSnapshotPayload = {
-    user_id: userId || undefined,
+    user_id: userId,
     last_seen_ts: nowTs,
     price_snapshot: priceSnapshot,
     alerts: currentAlerts,
     device_hint: /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
   };
 
-  // 2. Local Mirroring: immediately save this exact payload to localStorage
+  // 2. Local Mirroring: immediately save this exact payload to user-specific localStorage key
   try {
-    localStorage.setItem('wl_exit_snapshot', JSON.stringify(payload));
+    localStorage.setItem('wl_exit_snapshot_' + userId, JSON.stringify(payload));
   } catch (err) {
     console.error('Failed to mirror exit snapshot locally:', err);
   }

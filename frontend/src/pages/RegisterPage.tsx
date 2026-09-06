@@ -61,6 +61,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin, onR
     try {
       const cleanEmail = email.trim().toLowerCase();
       const data = await authService.register(cleanEmail, password);
+      try {
+        localStorage.removeItem('wl_exit_snapshot');
+      } catch {}
+      useSessionStore.setState({ checkpoint: null });
       setUserId(data.user.id);
       onRegisterSuccess();
     } catch (err: any) {
@@ -170,7 +174,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin, onR
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="trader@groww.in"
                 style={INPUT_BASE}
                 onFocus={(e) => { e.currentTarget.style.borderColor = '#00D09C'; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = '#E8E9EB'; }}
@@ -186,7 +190,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin, onR
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min. 6 characters"
+                placeholder="Enter your password"
                 style={INPUT_BASE}
                 onFocus={(e) => { e.currentTarget.style.borderColor = '#00D09C'; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = '#E8E9EB'; }}

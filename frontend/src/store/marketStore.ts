@@ -83,28 +83,31 @@ function loadInitialMarketSnapshot(): {
   let initialAlerts: AlertData[] = [];
 
   try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem('wl_exit_snapshot') : null;
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed) {
-        if (parsed.price_snapshot && typeof parsed.price_snapshot === 'object') {
-          const nowEpoch = Math.floor(Date.now() / 1000);
-          for (const [sym, price] of Object.entries(parsed.price_snapshot)) {
-            const intPrice = Math.round(Number(price));
-            if (intPrice > 0) {
-              initialTicks[sym] = {
-                ltp: intPrice,
-                volume: 1200,
-                anomalyScore: 0.1,
-                triggerCode: 0,
-                sparklineTs: nowEpoch,
-                previousClose: BASE_PRICES_FALLBACK[sym] || intPrice,
-              };
+    const userId = useSessionStore.getState().userId;
+    if (userId && typeof window !== 'undefined') {
+      const raw = localStorage.getItem('wl_exit_snapshot_' + userId);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed) {
+          if (parsed.price_snapshot && typeof parsed.price_snapshot === 'object') {
+            const nowEpoch = Math.floor(Date.now() / 1000);
+            for (const [sym, price] of Object.entries(parsed.price_snapshot)) {
+              const intPrice = Math.round(Number(price));
+              if (intPrice > 0) {
+                initialTicks[sym] = {
+                  ltp: intPrice,
+                  volume: 1200,
+                  anomalyScore: 0.1,
+                  triggerCode: 0,
+                  sparklineTs: nowEpoch,
+                  previousClose: BASE_PRICES_FALLBACK[sym] || intPrice,
+                };
+              }
             }
           }
-        }
-        if (Array.isArray(parsed.alerts) && parsed.alerts.length > 0) {
-          initialAlerts = parsed.alerts;
+          if (Array.isArray(parsed.alerts) && parsed.alerts.length > 0) {
+            initialAlerts = parsed.alerts;
+          }
         }
       }
     }
@@ -171,8 +174,7 @@ export const useMarketStore = create<MarketStore>((set) => ({
       const referencePrice = actualBaseline && actualBaseline > 0 ? actualBaseline : currentPrice;
 
       const exitTimestamp =
-        (sessionState?.checkpoint?.last_seen_ts ? sessionState.checkpoint.last_seen_ts * 1000 : 0) ||
-        (Date.now() - 3600000 * 3.25); // default fallback ~3h 15m ago
+        sessionState?.checkpoint?.last_seen_ts ? sessionState.checkpoint.last_seen_ts * 1000 : 0;
 
       // 2. Calculate the delta strictly from the referencePrice
       const calculatedDeltaBps =

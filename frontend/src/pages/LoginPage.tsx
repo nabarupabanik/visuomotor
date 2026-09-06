@@ -34,8 +34,8 @@ const LABEL_BASE: React.CSSProperties = {
 };
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister, onLoginSuccess }) => {
-  const [email, setEmail] = useState('trader@groww.in');
-  const [password, setPassword] = useState('securepassword123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -159,7 +159,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister, onLogi
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder="trader@groww.in"
                 style={INPUT_BASE}
                 onFocus={(e) => { e.currentTarget.style.borderColor = '#00D09C'; }}
                 onBlur={(e) => { e.currentTarget.style.borderColor = '#E8E9EB'; }}

@@ -101,7 +101,7 @@ def build_hydration_payload(
         previous_closes[sym_u] = broadcaster.get_previous_close(sym_u)
 
     return {
-        "ts": int(last_seen_ts) if last_seen_ts else int(time.time()),
+        "ts": int(last_seen_ts) if last_seen_ts else 0,
         "mode": fallback_mode,
         "previous_closes": previous_closes,
         "alerts": alerts[:5],  # top 5 volatile alerts

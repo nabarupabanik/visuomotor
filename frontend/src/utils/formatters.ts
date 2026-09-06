@@ -76,3 +76,27 @@ export function formatVolume(volume: number | undefined | null): string {
   if (volume >= 1_000) return `${(volume / 1_000).toFixed(1)} K`;
   return volume.toLocaleString('en-IN');
 }
+
+/**
+ * Format absence duration into human-friendly, multi-day formatting.
+ * Handles single-day (minutes, hours) and multi-day/weekend absences.
+ */
+export function formatAbsenceTime(exitTimestamp?: number | null): string {
+  if (!exitTimestamp) return "Since market open"; // Fallback for missing data
+
+  const diffMs = Math.max(0, Date.now() - exitTimestamp);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays >= 1) {
+    return `Since you left ${diffDays}d ago`;
+  }
+  if (diffHours >= 1) {
+    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / 60000);
+    return `Since you left ${diffHours}h ${mins}m ago`;
+  }
+
+  const mins = Math.floor(diffMs / 60000);
+  return `Since you left ${mins || 1}m ago`;
+}
+
