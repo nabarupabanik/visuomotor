@@ -33,9 +33,9 @@ function generateCandleData(baselineP: number, currentP: number, count: number =
     close: number;
   }> = [];
 
-  const nowSec = Math.floor(Date.now() / 1000);
   const fiveMin = 5 * 60;
-  const startSec = nowSec - count * fiveMin;
+  const currentBucketSec = Math.floor(Date.now() / 1000 / fiveMin) * fiveMin;
+  const startSec = currentBucketSec - (count - 1) * fiveMin;
 
   const minP = Math.min(baselineP, currentP);
   const maxP = Math.max(baselineP, currentP);
@@ -94,6 +94,14 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const lastCandleRef = useRef<{
+    time: UTCTimestamp;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  } | null>(null);
+  const ltpPriceLineRef = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']> | null>(null);
 
   const displaySymbol = symbol || alert?.symbol || 'STOCK';
 
@@ -112,6 +120,7 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
     return parseFloat((previousClose / 100).toFixed(2));
   }, [previousClose]);
 
+  // Step 2: Initialize Chart and setData() ONLY once on mount / symbol change
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
@@ -161,7 +170,7 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
 
     chartInstanceRef.current = chart;
 
-    // 2. Add Candlestick Series (Disable default price line & last-value label to avoid fighting custom lines)
+    // 2. Add Candlestick Series and store in seriesRef (Step 1)
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#00D09C',
       downColor: '#EB5B3C',
@@ -174,9 +183,12 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
 
     seriesRef.current = candlestickSeries;
 
-    // 3. Hydrate Candle Data
+    // 3. Hydrate Historical Candle Data strictly once via setData (Step 2)
     const data = generateCandleData(baselineRupees, currentRupees);
     candlestickSeries.setData(data);
+    if (data.length > 0) {
+      lastCandleRef.current = { ...data[data.length - 1] };
+    }
 
     // 4. Draw The Exit Baseline Price Line (Red / Dashed)
     candlestickSeries.createPriceLine({
@@ -189,7 +201,7 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
     });
 
     // 5. Draw The Current Price Line (Green / Solid)
-    candlestickSeries.createPriceLine({
+    ltpPriceLineRef.current = candlestickSeries.createPriceLine({
       price: currentRupees,
       color: '#00D09C',
       lineWidth: 2,
@@ -234,8 +246,59 @@ export const CandlestickView: React.FC<CandlestickViewProps> = ({
       chart.remove();
       chartInstanceRef.current = null;
       seriesRef.current = null;
+      lastCandleRef.current = null;
+      ltpPriceLineRef.current = null;
     };
-  }, [baselineRupees, currentRupees, prevCloseRupees, height]);
+  }, [displaySymbol, baselineRupees, prevCloseRupees, height]);
+
+  // Step 3: Handle Live Ticks with .update() without calling setData
+  useEffect(() => {
+    if (!seriesRef.current || !lastCandleRef.current) return;
+
+    const fiveMin = 5 * 60;
+    const currentBucketSec = (Math.floor(Date.now() / 1000 / fiveMin) * fiveMin) as UTCTimestamp;
+    const lastCandle = lastCandleRef.current;
+
+    let updatedCandle: {
+      time: UTCTimestamp;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+    };
+
+    if (currentBucketSec === lastCandle.time) {
+      // Same 5-minute bucket: update high, low, and close without shifting the chart
+      updatedCandle = {
+        time: lastCandle.time,
+        open: lastCandle.open,
+        high: parseFloat(Math.max(lastCandle.high, currentRupees).toFixed(2)),
+        low: parseFloat(Math.min(lastCandle.low, currentRupees).toFixed(2)),
+        close: currentRupees,
+      };
+    } else if (currentBucketSec > lastCandle.time) {
+      // Newer timestamp: smoothly paint a new candle
+      updatedCandle = {
+        time: currentBucketSec,
+        open: lastCandle.close,
+        high: parseFloat(Math.max(lastCandle.close, currentRupees).toFixed(2)),
+        low: parseFloat(Math.min(lastCandle.close, currentRupees).toFixed(2)),
+        close: currentRupees,
+      };
+    } else {
+      return;
+    }
+
+    lastCandleRef.current = updatedCandle;
+    seriesRef.current.update(updatedCandle);
+
+    // Smoothly update LTP price line
+    if (ltpPriceLineRef.current) {
+      ltpPriceLineRef.current.applyOptions({
+        price: currentRupees,
+      });
+    }
+  }, [currentRupees]);
 
   return (
     <div
