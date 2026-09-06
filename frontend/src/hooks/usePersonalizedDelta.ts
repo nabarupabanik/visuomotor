@@ -24,9 +24,15 @@ export function usePersonalizedDelta(symbol: string, currentLtp?: number): Perso
       return { lastSeenPrice: lastPrice || null, deltaBps: null, hasBaseline: !!lastPrice };
     }
 
-    const bps = Math.round(((currentLtp - lastPrice) / lastPrice) * 10000);
+    // Sanitize against corrupted legacy snapshots where price was 100x
+    let effectiveLastPrice = lastPrice;
+    if (effectiveLastPrice > currentLtp * 1.5 || effectiveLastPrice < currentLtp * 0.5) {
+      effectiveLastPrice = currentLtp;
+    }
+
+    const bps = Math.round(((currentLtp - effectiveLastPrice) / effectiveLastPrice) * 10000);
     return {
-      lastSeenPrice: lastPrice,
+      lastSeenPrice: effectiveLastPrice,
       deltaBps: bps,
       hasBaseline: true,
     };

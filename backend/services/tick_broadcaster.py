@@ -75,23 +75,38 @@ class TickBroadcaster:
 
     def generate_tick(self, symbol: str) -> Dict[str, Any]:
         """
-        Generate a single simulated tick with drift and micro-fluctuation,
-        scored through the AnomalyEngine (Z-Score + Isolation Forest).
+        Generate a single simulated tick with zero-drift micro-fluctuation,
+        elastic mean-reversion to previous_close, and strict NSE circuit filter clamping (±8%).
         """
-        base = self.current_prices.get(symbol, 100000)
         prev_close = self.get_previous_close(symbol)
+        base = self.current_prices.get(symbol, prev_close)
 
-        # 5% chance of simulated market anomaly for demonstration
-        is_spike = random.random() < 0.05
+        # Self-healing guard: reset any previously inflated price back to baseline
+        if base > prev_close * 1.25 or base < prev_close * 0.75:
+            base = prev_close
+            self.current_prices[symbol] = prev_close
+
+        # 4% chance of simulated market anomaly for demonstration
+        is_spike = random.random() < 0.04
         if is_spike:
-            direction = 1 if random.random() > 0.4 else -1
-            pct_change = direction * random.uniform(0.025, 0.045)  # 2.5% - 4.5% move
-            volume = random.randint(15000, 45000)                  # volume surge
+            # Symmetrical 50/50 direction
+            direction = 1 if random.random() > 0.5 else -1
+            pct_change = direction * random.uniform(0.015, 0.030)  # 1.5% - 3.0% move
+            volume = random.randint(12000, 35000)                  # volume surge
         else:
-            pct_change = random.gauss(0.0001, 0.0018)
-            volume = random.randint(50, 4500)
+            # Elastic mean-reversion: pulls price gently back towards prev_close if it drifts
+            deviation = (base - prev_close) / prev_close
+            mean_revert_pull = -0.08 * deviation
+            pct_change = mean_revert_pull + random.gauss(0.0, 0.0010)
+            volume = random.randint(100, 3500)
 
-        new_price = max(100, int(base * (1 + pct_change)))
+        raw_price = int(base * (1 + pct_change))
+
+        # Enforce realistic NSE circuit limit (±8% of previous close)
+        # Prevents runaway compound growth over long server uptimes
+        min_allowed = int(prev_close * 0.92)
+        max_allowed = int(prev_close * 1.08)
+        new_price = max(min_allowed, min(max_allowed, raw_price))
         self.current_prices[symbol] = new_price
 
         now = datetime.datetime.now()

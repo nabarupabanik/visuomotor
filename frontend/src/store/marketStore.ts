@@ -93,14 +93,19 @@ function loadInitialMarketSnapshot(): {
             const nowEpoch = Math.floor(Date.now() / 1000);
             for (const [sym, price] of Object.entries(parsed.price_snapshot)) {
               const intPrice = Math.round(Number(price));
-              if (intPrice > 0) {
+              const expectedBase = BASE_PRICES_FALLBACK[sym];
+              let validPrice = intPrice;
+              if (expectedBase && (intPrice > expectedBase * 1.5 || intPrice < expectedBase * 0.5)) {
+                validPrice = expectedBase;
+              }
+              if (validPrice > 0) {
                 initialTicks[sym] = {
-                  ltp: intPrice,
+                  ltp: validPrice,
                   volume: 1200,
                   anomalyScore: 0.1,
                   triggerCode: 0,
                   sparklineTs: nowEpoch,
-                  previousClose: BASE_PRICES_FALLBACK[sym] || intPrice,
+                  previousClose: expectedBase || validPrice,
                 };
               }
             }
