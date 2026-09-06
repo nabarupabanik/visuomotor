@@ -4,14 +4,12 @@ Flask application factory.
 Creates and configures the Flask app, registers all blueprints,
 and initialises all extensions.
 """
-from flask import Flask
+import os
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from .config import get_config
 from .extensions import db, redis_client, jwt, scheduler
-
-
-import os
 
 
 def create_app(config_name: str = None) -> Flask:
@@ -105,8 +103,6 @@ def create_app(config_name: str = None) -> Flask:
     app.register_blueprint(summary_bp,   url_prefix="/api/summary")
 
     # ── Frontend SPA static serving (from frontend/dist) ──────────────────────
-    import os
-    from flask import send_from_directory
     dist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 
     @app.route("/", defaults={"path": ""})
