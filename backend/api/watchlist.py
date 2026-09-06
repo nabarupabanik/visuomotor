@@ -34,43 +34,46 @@ def get_catalog():
     if query:
         dialect_name = db.engine.dialect.name
         if dialect_name == "postgresql":
-            from sqlalchemy import text
-            raw_sql = text("""
-                SELECT symbol, company_name, exchange, asset_class, week_52_high, week_52_low,
-                       GREATEST(similarity(symbol, :q), similarity(company_name, :q)) as rank_score
-                FROM stock_symbols
-                WHERE symbol ILIKE :prefix 
-                   OR company_name ILIKE :contains
-                   OR symbol % :q
-                   OR company_name % :q
-                ORDER BY 
-                   CASE WHEN company_name ILIKE :exact THEN 1
-                        WHEN symbol ILIKE :exact THEN 2
-                        WHEN symbol ILIKE :prefix THEN 3
-                        WHEN company_name ILIKE :prefix THEN 4
-                        ELSE 5 END,
-                   rank_score DESC
-                LIMIT 20;
-            """)
-            rows = db.session.execute(raw_sql, {
-                "q": query,
-                "prefix": f"{query}%",
-                "contains": f"%{query}%",
-                "exact": query,
-            }).fetchall()
+            try:
+                from sqlalchemy import text
+                raw_sql = text("""
+                    SELECT symbol, company_name, exchange, asset_class, week_52_high, week_52_low,
+                           GREATEST(similarity(symbol, :q), similarity(company_name, :q)) as rank_score
+                    FROM stock_symbols
+                    WHERE symbol ILIKE :prefix 
+                       OR company_name ILIKE :contains
+                       OR symbol % :q
+                       OR company_name % :q
+                    ORDER BY 
+                       CASE WHEN company_name ILIKE :exact THEN 1
+                            WHEN symbol ILIKE :exact THEN 2
+                            WHEN symbol ILIKE :prefix THEN 3
+                            WHEN company_name ILIKE :prefix THEN 4
+                            ELSE 5 END,
+                       rank_score DESC
+                    LIMIT 20;
+                """)
+                rows = db.session.execute(raw_sql, {
+                    "q": query,
+                    "prefix": f"{query}%",
+                    "contains": f"%{query}%",
+                    "exact": query,
+                }).fetchall()
 
-            catalog = [
-                {
-                    "symbol": r.symbol,
-                    "company_name": r.company_name,
-                    "exchange": r.exchange,
-                    "asset_class": r.asset_class,
-                    "week_52_high": r.week_52_high,
-                    "week_52_low": r.week_52_low,
-                }
-                for r in rows
-            ]
-            return jsonify({"catalog": catalog}), 200
+                catalog = [
+                    {
+                        "symbol": r.symbol,
+                        "company_name": r.company_name,
+                        "exchange": r.exchange,
+                        "asset_class": r.asset_class,
+                        "week_52_high": r.week_52_high,
+                        "week_52_low": r.week_52_low,
+                    }
+                    for r in rows
+                ]
+                return jsonify({"catalog": catalog}), 200
+            except Exception as e:
+                db.session.rollback()
 
         symbols = StockSymbol.query.filter(
             (StockSymbol.symbol.ilike(f"%{query}%")) |
