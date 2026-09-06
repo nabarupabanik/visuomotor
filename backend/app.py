@@ -11,7 +11,12 @@ from .config import get_config
 from .extensions import db, redis_client, jwt, scheduler
 
 
-def create_app(config_name: str = "development") -> Flask:
+import os
+
+
+def create_app(config_name: str = None) -> Flask:
+    if config_name is None:
+        config_name = os.environ.get("FLASK_ENV", "development")
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
 

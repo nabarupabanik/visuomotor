@@ -342,7 +342,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#F4F5F7' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#F5F6F9' }}>
 
       {/* ═══════════════════════════════════════════════════════════════════════
           ZONE A: Main Top Navigation Bar (Groww-style white bar)
@@ -693,18 +693,19 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
       {/* ═══════════════════════════════════════════════════════════════════════
           ZONE D: Main Content Body
       ══════════════════════════════════════════════════════════════════════════ */}
-      <main style={{ flex: 1, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }}>
+      <main style={{ flex: 1, padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: '0', minHeight: 0 }}>
 
         {/* White container card wrapping the entire watchlist area */}
         <div
           style={{
             backgroundColor: '#FFFFFF',
             border: '1px solid #E8E9EB',
-            borderRadius: '12px',
+            borderRadius: '12px 12px 0 0',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            flex: 1,
           }}
         >
 
@@ -723,11 +724,12 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
             style={{
               padding: '10px 16px',
               display: 'flex',
+              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '12px',
               borderBottom: '1px solid #E8E9EB',
-              flexWrap: 'wrap',
+              flexWrap: 'nowrap',
             }}
           >
             {/* Left: Watchlist search */}
@@ -806,7 +808,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
 
           {/* ── D3: Meaningful Changes Carousel (Zone 1) ──────────────────── */}
           {/* Only shown when there are alerts */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #E8E9EB' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #E8E9EB' }}>
             <AlertCarousel onRetrySummary={retrySummary} />
           </div>
 
@@ -814,7 +816,7 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
           <div
             className="wl-table-grid"
             style={{
-              padding: '12px 16px',
+              padding: '10px 20px',
               backgroundColor: '#F4F5F7',
               borderBottom: '1px solid #E8E9EB',
               position: 'sticky',

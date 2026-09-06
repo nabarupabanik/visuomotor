@@ -159,7 +159,16 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onRetrySummary }) =
       >
         {alert.summary ? (
           <div style={{ fontSize: '0.78rem', color: '#44475B', lineHeight: 1.4 }}>
-            💡 <span style={{ fontWeight: 400 }}>{alert.summary}</span>
+            💡 <span
+              style={{
+                fontWeight: 400,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >{alert.summary}</span>
           </div>
         ) : alert.isSummaryError ? (
           <div
