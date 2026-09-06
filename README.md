@@ -1,4 +1,4 @@
-# Groww Smart Watchlist
+# Visuomotor - Smart Market Watchlist
 
 > **A triage-driven market interface that answers one question: *"What meaningfully changed for ME since I last checked?"***
 
@@ -64,9 +64,9 @@ The **Groww Smart Watchlist** transitions market monitoring from passive tabular
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ GROWW SMART WATCHLIST (Personalized Triage Interface)                        │
+│ GROWW SMART WATCHLIST (Personalized Triage Interface)                       │
 │                                                                             │
-│ TATAMOTORS   ₹982.50   1D: +4.5%   ▼ -5.0% since exit   💼 25 qty   [Placard]│
+│ TATAMOTORS   ₹982.50   1D: +4.5%   ▼ -5.0% since exit   💼 25 qty  [Placard]│
 │ ↳ AI Catalyst: "Regulatory probe on EV subsidy claimed at 12:45 PM"         │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -282,5 +282,5 @@ npm run typecheck
 ---
 
 <div align="center">
-  <sub>Built with precision for the <strong>Groww Engineering Challenge 2026</strong>. Designed to scale to millions of retail investors.</sub>
+  <sub>Built with precision for the <strong>Code, by Groww 2026</strong>. Designed to scale to millions of retail investors.</sub>
 </div>
