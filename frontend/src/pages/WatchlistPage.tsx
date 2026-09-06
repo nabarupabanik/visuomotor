@@ -580,37 +580,44 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
         style={{
           backgroundColor: '#FFFFFF',
           borderBottom: '1px solid #E8E9EB',
-          padding: '0 24px',
+          padding: '0 16px',
           height: '38px',
           display: 'flex',
+          flexDirection: 'row',
           alignItems: 'center',
-          gap: '0',
+          justifyContent: 'flex-start',
+          gap: '4px',
           overflowX: 'auto',
           flexShrink: 0,
         }}
       >
-        {MOCK_INDICES.map((idx, i) => (
+        {MOCK_INDICES.map((idx) => (
           <div
             key={idx.name}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '0 20px 0 (i === 0 ? 0 : 20)',
-              borderRight: i < MOCK_INDICES.length - 1 ? '1px solid #F0F0F2' : 'none',
+              gap: '6px',
+              padding: '4px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer',
               whiteSpace: 'nowrap',
+              flexShrink: 0,
+              transition: 'background-color 0.15s ease',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F5F5'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#44475B' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#44475B' }}>
               {idx.name}
             </span>
-            <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#44475B' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#44475B' }}>
               {idx.price}
             </span>
             <span
               style={{
-                fontSize: '0.75rem',
-                fontWeight: 600,
+                fontSize: '0.78rem',
+                fontWeight: 500,
                 color: idx.up ? '#00D09C' : '#EB5B3C',
               }}
             >
