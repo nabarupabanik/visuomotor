@@ -124,7 +124,7 @@ export const useSessionStore = create<SessionState>()(
     {
       name: 'wl_session',   // localStorage key
       partialize: (state) => ({
-        // Only persist checkpoint and watchlist config — never token
+        userId: state.userId,
         watchlistId: state.watchlistId,
         watchlistName: state.watchlistName,
         watchlistSymbols: state.watchlistSymbols,

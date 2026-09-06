@@ -61,6 +61,13 @@ class TickBroadcaster:
         self.current_prices[symbol] = price
         return price
 
+    def get_previous_close(self, symbol: str) -> int:
+        if symbol in BASE_PRICES:
+            return BASE_PRICES[symbol]
+        if symbol not in self.current_prices:
+            return self.ensure_symbol(symbol)
+        return self.current_prices.get(symbol, 100000)
+
     def get_latest_price(self, symbol: str) -> int:
         if symbol not in self.current_prices:
             return self.ensure_symbol(symbol)
@@ -72,6 +79,7 @@ class TickBroadcaster:
         scored through the AnomalyEngine (Z-Score + Isolation Forest).
         """
         base = self.current_prices.get(symbol, 100000)
+        prev_close = self.get_previous_close(symbol)
 
         # 5% chance of simulated market anomaly for demonstration
         is_spike = random.random() < 0.05
@@ -93,6 +101,7 @@ class TickBroadcaster:
         # Real-time anomaly scoring
         engine = get_anomaly_engine(symbol)
         sc, tc, metrics = engine.score_tick(new_price, volume, tod_hour)
+        metrics["previous_close"] = prev_close
 
         # Payload matching design.md §7.2:
         # s: symbol, p: price in paise, v: volume, sc: anomaly score, tc: trigger code
@@ -103,6 +112,7 @@ class TickBroadcaster:
             "sc": sc,
             "tc": tc,
             "sparklineTs": now_epoch,
+            "prevClose": prev_close,
             "metrics": metrics,
         }
         return tick

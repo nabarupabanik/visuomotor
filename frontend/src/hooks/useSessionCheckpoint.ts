@@ -18,10 +18,34 @@ export function useSessionCheckpoint() {
         const res = await api.get<{
           ts: number;
           mode: 'live' | 'fallback';
+          previous_closes?: Record<string, number>;
           alerts: Array<[string, number, number]>;
         }>('/session/hydrate');
 
-        const { alerts } = res.data;
+        const { alerts, previous_closes } = res.data;
+
+        // Seed previousClose in marketStore for all symbols
+        if (previous_closes) {
+          const marketState = useMarketStore.getState();
+          for (const [sym, pc] of Object.entries(previous_closes)) {
+            const currentTick = marketState.ticks[sym];
+            if (currentTick) {
+              marketState.updateTick(sym, {
+                ...currentTick,
+                previousClose: pc,
+              });
+            } else {
+              marketState.updateTick(sym, {
+                ltp: pc,
+                volume: 1200,
+                anomalyScore: 0.1,
+                triggerCode: 0,
+                sparklineTs: Math.floor(Date.now() / 1000),
+                previousClose: pc,
+              });
+            }
+          }
+        }
 
         // 1. Fetch latest server checkpoint to reconcile local storage
         let serverLastSeenPrices: Record<string, number> | null = null;

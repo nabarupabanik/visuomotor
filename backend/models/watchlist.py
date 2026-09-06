@@ -51,10 +51,12 @@ class WatchlistItem(db.Model):
     )
 
     def to_dict(self) -> dict:
+        from ..services.tick_broadcaster import broadcaster
         return {
             "id": self.id,
             "watchlist_id": self.watchlist_id,
             "symbol": self.symbol,
             "display_order": self.display_order,
             "added_at": self.added_at.isoformat() if self.added_at else None,
+            "previous_close": broadcaster.get_previous_close(self.symbol),
         }

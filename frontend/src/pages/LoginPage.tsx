@@ -47,7 +47,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister, onLogi
     setLoading(true);
 
     try {
-      const data = await authService.login(email, password);
+      const cleanEmail = email.trim().toLowerCase();
+      const data = await authService.login(cleanEmail, password);
       setUserId(data.user.id);
       onLoginSuccess();
     } catch (err: any) {

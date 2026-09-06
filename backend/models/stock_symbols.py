@@ -16,6 +16,7 @@ class StockSymbol(db.Model):
     week_52_low = db.Column(db.Integer, nullable=True)   # in paise
 
     def to_dict(self) -> dict:
+        from ..services.tick_broadcaster import broadcaster
         return {
             "symbol": self.symbol,
             "company_name": self.company_name,
@@ -23,4 +24,5 @@ class StockSymbol(db.Model):
             "asset_class": self.asset_class,
             "week_52_high": self.week_52_high,
             "week_52_low": self.week_52_low,
+            "previous_close": broadcaster.get_previous_close(self.symbol),
         }

@@ -12,9 +12,11 @@ import { AlertCarousel } from '../components/AlertCarousel/AlertCarousel';
 import { SortToggle } from '../components/WatchlistList/SortToggle';
 import { useVolatilitySortedList } from '../hooks/useVolatilitySortedList';
 import { useSummaryRequest } from '../hooks/useSummaryRequest';
+import { CandlestickView } from '../components/AlertCarousel/CandlestickView';
+import { formatPaise } from '../utils/formatters';
 
 // ── Column sort types ─────────────────────────────────────────────────────────
-type SortKey = 'company' | 'price' | 'change' | 'volume';
+type SortKey = 'company' | 'price' | 'oneDayChange' | 'change' | 'volume';
 type SortDir = 'asc' | 'desc';
 interface SortConfig { key: SortKey | null; dir: SortDir | null; }
 
@@ -57,6 +59,16 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [watchlistSearch, setWatchlistSearch] = useState('');
+  const [chartModalSymbol, setChartModalSymbol] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!chartModalSymbol) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChartModalSymbol(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [chartModalSymbol]);
 
   const setWatchlistSymbols = useSessionStore((state) => state.setWatchlistSymbols);
   const setActiveWatchlistIdInStore = useSessionStore((state) => state.setActiveWatchlistId);
@@ -147,6 +159,23 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
           if (pa === null) return 1;
           if (pb === null) return -1;
           return dir * (pa - pb);
+        }
+
+        // ── 1D change: relative to previousClose ───────────────────────
+        case 'oneDayChange': {
+          const calc1D = (symbol: string): number | null => {
+            const tick = ticks[symbol];
+            const ltp = tick?.ltp;
+            const pc = tick?.previousClose;
+            if (!pc || pc <= 0 || !ltp) return null;
+            return ((ltp - pc) / pc) * 10000;
+          };
+          const da = calc1D(a.symbol);
+          const db = calc1D(b.symbol);
+          if (da === null && db === null) return 0;
+          if (da === null) return 1;
+          if (db === null) return -1;
+          return dir * (da - db);
         }
 
         // ── Change (since exit): basis points derived from checkpoint ──
@@ -798,7 +827,16 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
               onClick={handleColumnSort}
             />
 
-            {/* Col 4: Change (since exit) — right-aligned, sortable */}
+            {/* Col 4: 1D change — right-aligned, sortable */}
+            <SortableHeader
+              label="1D change"
+              sortKey="oneDayChange"
+              justify="flex-end"
+              sortConfig={sortConfig}
+              onClick={handleColumnSort}
+            />
+
+            {/* Col 5: Change (since exit) — right-aligned, sortable */}
             <SortableHeader
               label="Change (since exit)"
               sortKey="change"
@@ -863,12 +901,209 @@ export const WatchlistPage: React.FC<WatchlistPageProps> = ({ onLogout }) => {
                   onMoveDown={() => handleMoveSymbol(idx, 'down')}
                   onRemove={() => handleRemoveSymbol(item.symbol)}
                   holdings={MOCK_USER_HOLDINGS}
+                  onOpenChart={(sym) => setChartModalSymbol(sym)}
                 />
               ))
             )}
           </div>
         </div>
       </main>
+
+      {/* ── Candlestick Chart Modal for Watchlist Table Rows ───────────────── */}
+      {chartModalSymbol && (() => {
+        const modalTick = ticks[chartModalSymbol];
+        const modalCurrentPrice = modalTick?.ltp;
+        const modalBaselinePrice =
+          checkpoint?.last_seen_prices?.[chartModalSymbol] ??
+          useSessionStore.getState().checkpoint?.last_seen_prices?.[chartModalSymbol] ??
+          modalCurrentPrice;
+        const modalPreviousClose = modalTick?.previousClose;
+
+        const modalDeltaBps =
+          modalBaselinePrice && modalBaselinePrice > 0 && modalCurrentPrice
+            ? Math.round(((modalCurrentPrice - modalBaselinePrice) / modalBaselinePrice) * 10000)
+            : 0;
+        const modalDeltaPercent = (modalDeltaBps / 100).toFixed(2);
+        const modalIsPositive = modalDeltaBps >= 0;
+
+        let modal1DText: string | null = null;
+        let modal1DPositive = false;
+        if (modalCurrentPrice && modalPreviousClose && modalPreviousClose > 0) {
+          const diff = modalCurrentPrice - modalPreviousClose;
+          const absRupees = (Math.abs(diff) / 100).toFixed(2);
+          const pct = ((diff / modalPreviousClose) * 100).toFixed(2);
+          modal1DPositive = diff >= 0;
+          const sign = modal1DPositive ? '+' : '-';
+          modal1DText = `${sign}₹${absRupees} (${sign}${Math.abs(Number(pct)).toFixed(2)}%)`;
+        }
+
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.4)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 50,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+            }}
+            onClick={() => setChartModalSymbol(null)}
+          >
+            <div
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: '12px',
+                width: '800px',
+                maxWidth: '95vw',
+                padding: '24px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
+                border: '1px solid #E8E8E8',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  borderBottom: '1px solid #F0F0F0',
+                  paddingBottom: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '1.35rem',
+                        fontWeight: 700,
+                        color: '#121212',
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      {chartModalSymbol}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: '#F5F5F5',
+                        color: '#7C7E8C',
+                        border: '1px solid #E8E8E8',
+                      }}
+                    >
+                      NSE
+                    </span>
+                  </div>
+
+                  {/* Price & Change Details */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontSize: '1.2rem',
+                        fontWeight: 700,
+                        color: '#121212',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      {modalCurrentPrice ? formatPaise(modalCurrentPrice) : '₹0.00'}
+                    </span>
+
+                    {/* 1D Change Badge */}
+                    {modal1DText && (
+                      <span
+                        style={{
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                          color: modal1DPositive ? '#00D09C' : '#EB5B3C',
+                        }}
+                      >
+                        1D: {modal1DText}
+                      </span>
+                    )}
+
+                    {/* Change Since Exit */}
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.88rem',
+                          fontWeight: 700,
+                          color: modalIsPositive ? '#00D09C' : '#EB5B3C',
+                        }}
+                      >
+                        ({modalIsPositive ? `+${modalDeltaPercent}` : modalDeltaPercent}%)
+                      </span>
+                      {modalBaselinePrice ? (
+                        <span style={{ fontSize: '0.74rem', color: '#7C7E8C', fontWeight: 500 }}>
+                          since exit ({formatPaise(modalBaselinePrice)})
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Close "X" Button */}
+                <button
+                  type="button"
+                  onClick={() => setChartModalSymbol(null)}
+                  title="Close chart"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#7C7E8C',
+                    cursor: 'pointer',
+                    padding: '6px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'background 0.15s ease, color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#F5F5F5';
+                    e.currentTarget.style.color = '#121212';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.color = '#7C7E8C';
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Modal Body: Candlestick View */}
+              <CandlestickView
+                symbol={chartModalSymbol}
+                currentPrice={modalCurrentPrice}
+                baselinePrice={modalBaselinePrice}
+                previousClose={modalPreviousClose}
+                height={360}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

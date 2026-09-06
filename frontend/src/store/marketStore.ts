@@ -8,11 +8,13 @@ export interface TickData {
   anomalyScore: number; // continuous Isolation Forest score (0.0–1.0)
   triggerCode: number;  // 0 = no alert, 1–5 = classified anomaly
   sparklineTs: number;  // epoch of this tick for sparkline rendering
+  previousClose?: number; // yesterday's close (paise, integer)
   metrics?: {
     vol_multiplier?: number;
     z_score?: number;
     day_high?: number;
     day_low?: number;
+    previous_close?: number;
   };
 }
 
@@ -57,6 +59,22 @@ export interface MarketStore {
   reset: () => void;
 }
 
+export const BASE_PRICES_FALLBACK: Record<string, number> = {
+  RELIANCE: 248500,
+  TCS: 395000,
+  HDFCBANK: 165000,
+  INFY: 182000,
+  ICICIBANK: 121000,
+  BHARTIARTL: 152000,
+  ITC: 49000,
+  SBIN: 81000,
+  LT: 355000,
+  TATAMOTORS: 98000,
+  BAJFINANCE: 710000,
+  ZOMATO: 26500,
+  ASIANPAINT: 289000,
+};
+
 function loadInitialMarketSnapshot(): {
   ticks: Record<string, TickData>;
   alerts: AlertData[];
@@ -80,6 +98,7 @@ function loadInitialMarketSnapshot(): {
                 anomalyScore: 0.1,
                 triggerCode: 0,
                 sparklineTs: nowEpoch,
+                previousClose: BASE_PRICES_FALLBACK[sym] || intPrice,
               };
             }
           }
@@ -124,9 +143,22 @@ export const useMarketStore = create<MarketStore>((set) => ({
     set((state) => {
       if (!symbol || !tick) return state;
 
+      const existingTick = state.ticks[symbol];
+      const previousClose =
+        tick.previousClose ??
+        existingTick?.previousClose ??
+        tick.metrics?.previous_close ??
+        BASE_PRICES_FALLBACK[symbol] ??
+        tick.ltp;
+
+      const mergedTick: TickData = {
+        ...tick,
+        previousClose,
+      };
+
       const newTicks = {
         ...state.ticks,
-        [symbol]: tick,
+        [symbol]: mergedTick,
       };
 
       const sessionState = useSessionStore.getState();

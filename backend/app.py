@@ -31,7 +31,31 @@ def create_app(config_name: str = "development") -> Flask:
             if StockSymbol.query.count() < 100 and not app.config.get("TESTING"):
                 from .batch.sync_master_instruments import sync_nse_master_instruments
                 sync_nse_master_instruments(app)
+
+            # Auto-seed demo user trader@groww.in if not existing
+            demo_user = User.query.filter_by(email="trader@groww.in").first()
+            if not demo_user:
+                demo_user = User(email="trader@groww.in")
+                demo_user.set_password("securepassword123")
+                db.session.add(demo_user)
+                db.session.flush()
+
+                demo_wl = Watchlist(user_id=demo_user.id, name="My Watchlist")
+                db.session.add(demo_wl)
+                db.session.flush()
+
+                default_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "ITC", "SBIN", "BHARTIARTL"]
+                for idx, sym in enumerate(default_symbols):
+                    item = WatchlistItem(
+                        watchlist_id=demo_wl.id,
+                        symbol=sym,
+                        display_order=idx,
+                    )
+                    db.session.add(item)
+                db.session.commit()
+                app.logger.info("Demo user trader@groww.in seeded successfully.")
         except Exception as err:
+            db.session.rollback()
             app.logger.warning(f"Database auto-creation note: {err}")
 
     if not scheduler.running and not app.config.get("TESTING"):

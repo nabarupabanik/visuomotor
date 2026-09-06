@@ -59,7 +59,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin, onR
     setLoading(true);
 
     try {
-      const data = await authService.register(email, password);
+      const cleanEmail = email.trim().toLowerCase();
+      const data = await authService.register(cleanEmail, password);
       setUserId(data.user.id);
       onRegisterSuccess();
     } catch (err: any) {

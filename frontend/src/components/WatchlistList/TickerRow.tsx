@@ -16,12 +16,14 @@ interface TickerRowProps {
   onRemove: () => void;
   /** Optional holdings map passed from WatchlistPage: symbol -> quantity owned */
   holdings?: Record<string, number>;
+  onOpenChart?: (symbol: string) => void;
 }
 
 export const TickerRow: React.FC<TickerRowProps> = ({
   symbol,
   onRemove,
   holdings,
+  onOpenChart,
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const priceRef = useRef<HTMLSpanElement>(null);
@@ -72,6 +74,20 @@ export const TickerRow: React.FC<TickerRowProps> = ({
   const triggerColor = TRIGGER_COLORS[triggerCode] || '#00D09C';
 
   const isPositive = deltaBps !== null && deltaBps >= 0;
+
+  // 1D change: relative to yesterday's close (previousClose in paise)
+  const prevClose = tick?.previousClose;
+  let oneDayChangeText: string | null = null;
+  let oneDayColor = 'var(--text-muted)';
+  if (ltp && prevClose && prevClose > 0) {
+    const diffPaise = ltp - prevClose;
+    const absDiffRupees = (Math.abs(diffPaise) / 100).toFixed(2);
+    const pct = ((diffPaise / prevClose) * 100).toFixed(2);
+    const is1DPositive = diffPaise >= 0;
+    const sign = is1DPositive ? '+' : '-';
+    oneDayChangeText = `${sign}₹${absDiffRupees} (${sign}${Math.abs(Number(pct)).toFixed(2)}%)`;
+    oneDayColor = is1DPositive ? '#00D09C' : '#EB5B3C';
+  }
 
   // 52W perf bar: use anomalyScore (0–1) as fill indicator position
   const perfScore = tick?.anomalyScore ?? 0.5;
@@ -155,15 +171,20 @@ export const TickerRow: React.FC<TickerRowProps> = ({
         </div>
       </div>
 
-      {/* ── Col 2: Trend Sparkline ─────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifySelf: 'center' }}>
-        <MicroSparkline data={sparklineData} width={96} height={26} />
+      {/* ── Col 2: Sparkline Trend ────────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <MicroSparkline
+          data={sparklineData}
+          width={90}
+          height={26}
+        />
       </div>
 
-      {/* ── Col 3: Market Price ────────────────────────────────────────────── */}
+      {/* ── Col 3: Mkt price ─────────────────────────────────────────────── */}
       <div style={{ textAlign: 'right', justifySelf: 'end' }}>
         <span
           ref={priceRef}
+          className="tabular-nums"
           style={{
             fontFamily: 'var(--font-sans)',
             fontWeight: 600,
@@ -176,7 +197,26 @@ export const TickerRow: React.FC<TickerRowProps> = ({
         </span>
       </div>
 
-      {/* ── Col 4: Change (since exit) ─────────────────────────────────────── */}
+      {/* ── Col 4: 1D change ─────────────────────────────────────────────── */}
+      <div style={{ textAlign: 'right', justifySelf: 'end' }}>
+        {oneDayChangeText ? (
+          <span
+            className="tabular-nums"
+            style={{
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              color: oneDayColor,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {oneDayChangeText}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>—</span>
+        )}
+      </div>
+
+      {/* ── Col 5: Change (since exit) ─────────────────────────────────────── */}
       <div style={{ textAlign: 'right', justifySelf: 'end' }}>
         <span
           style={{
@@ -296,7 +336,10 @@ export const TickerRow: React.FC<TickerRowProps> = ({
           type="button"
           className="qa-btn"
           title={`View ${symbol} chart`}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenChart?.(symbol);
+          }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />

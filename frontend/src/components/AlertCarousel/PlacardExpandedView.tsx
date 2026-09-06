@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TRIGGER_LABELS, TRIGGER_COLORS, TriggerCode } from '../../constants/triggerCodes';
 import { AlertData } from '../../store/marketStore';
+import { CandlestickView } from './CandlestickView';
 
 interface PlacardExpandedViewProps {
   alert: AlertData;
@@ -15,6 +16,8 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
   onDismiss,
   onRetrySummary,
 }) => {
+  const [showChart, setShowChart] = useState(false);
+
   const rawCode = alert?.triggerCode ?? 0;
   const triggerCode = (rawCode >= 0 && rawCode <= 5 ? rawCode : 1) as TriggerCode;
   const label = TRIGGER_LABELS[triggerCode] || 'Anomaly';
@@ -269,154 +272,158 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
           </div>
         </div>
 
-        {/* ── SECTION 2: Anomaly Breakdown & The "Why" ─────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Quantitative Trigger Badges (Clean transparent pills, subtle border) */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                color: '#121212',
-                backgroundColor: '#FFFFFF',
-                padding: '5px 11px',
-                borderRadius: '6px',
-                border: '1px solid #E8E8E8',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10" />
-                <line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" />
-              </svg>
-              <span>
-                <strong style={{ fontWeight: 600 }}>{volMultiplier}x</strong> <span style={{ color: '#7C7E8C' }}>higher than 30m avg volume</span>
-              </span>
-            </span>
-
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                color: '#121212',
-                backgroundColor: '#FFFFFF',
-                padding: '5px 11px',
-                borderRadius: '6px',
-                border: '1px solid #E8E8E8',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
-              <span>
-                <strong style={{ fontWeight: 600 }}>{Math.abs(Number(zScore) || parseFloat(deltaPercent) || 0)}σ</strong> <span style={{ color: '#7C7E8C' }}>deviation from expected curve</span>
-              </span>
-            </span>
-          </div>
-
-          {/* Session-Bounded Sparkline Graph */}
-          <div
-            style={{
-              backgroundColor: '#F9F9F9',
-              borderRadius: '8px',
-              padding: '14px 16px',
-              border: '1px solid #E8E8E8',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#7C7E8C' }}>
-              <span>Historical baseline (pre-exit)</span>
-              <span style={{ fontWeight: 600, color: isPositive ? '#00D09C' : '#EB5B3C' }}>● Offline session delta</span>
-            </div>
-            <svg viewBox="0 0 280 60" style={{ width: '100%', height: '58px', overflow: 'visible' }}>
-              {/* Pre-exit dashed grey path */}
-              <path d={preExitPath} fill="none" stroke="#B0B4C0" strokeWidth="1.8" strokeDasharray="3 3" />
-              {/* Session highlighted colored path */}
-              <path d={sessionPath} fill="none" stroke={isPositive ? '#00D09C' : '#EB5B3C'} strokeWidth="2" />
-              {/* Anomaly Marker on current price point */}
-              {lastPoint && (
-                <>
-                  <circle cx={lastPoint.x} cy={lastPoint.y} r="5" fill={isPositive ? '#00D09C' : '#EB5B3C'} opacity="0.3" />
-                  <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill={isPositive ? '#00D09C' : '#EB5B3C'} stroke="#FFFFFF" strokeWidth="1.5" />
-                </>
-              )}
-            </svg>
-          </div>
-
-          {/* Catalyst / Filings Context */}
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: '8px',
-              backgroundColor: '#F9F9F9',
-              border: '1px solid #E8E8E8',
-              fontSize: '0.82rem',
-              color: '#44475B',
-              lineHeight: 1.5,
-            }}
-          >
-            {alert?.summary ? (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '2px' }}>
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="16" x2="12" y2="12" />
-                  <line x1="12" y1="8" x2="12.01" y2="8" />
+        {/* ── SECTION 2: Anomaly Breakdown / Candlestick Chart View ─────── */}
+        {showChart ? (
+          <CandlestickView alert={alert} height={250} />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Quantitative Trigger Badges (Clean transparent pills, subtle border) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: '#121212',
+                  backgroundColor: '#FFFFFF',
+                  padding: '5px 11px',
+                  borderRadius: '6px',
+                  border: '1px solid #E8E8E8',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
                 </svg>
-                <div>
-                  <strong style={{ color: '#121212', fontWeight: 600 }}>AI Catalyst:</strong> {alert.summary}
-                </div>
-              </div>
-            ) : alert?.isSummaryLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div className="skeleton-shimmer" style={{ height: '12px', width: '85%', backgroundColor: '#E8E8E8' }} />
-                <div className="skeleton-shimmer" style={{ height: '12px', width: '60%', backgroundColor: '#E8E8E8' }} />
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                <span style={{ color: '#7C7E8C' }}>
-                  No media catalyst detected.{' '}
-                  <a
-                    href={alert?.filingUrl || `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${symbol}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#00D09C', fontWeight: 600, textDecoration: 'none' }}
-                  >
-                    View Exchange Corporate Filings ↗
-                  </a>
+                <span>
+                  <strong style={{ fontWeight: 600 }}>{volMultiplier}x</strong> <span style={{ color: '#7C7E8C' }}>higher than 30m avg volume</span>
                 </span>
-                {onRetrySummary && (
-                  <button
-                    type="button"
-                    onClick={() => onRetrySummary(symbol)}
-                    title="Retry AI summary"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#7C7E8C',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = '#00D09C')}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = '#7C7E8C')}
-                  >
-                    ⟳
-                  </button>
-                )}
+              </span>
+
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: '#121212',
+                  backgroundColor: '#FFFFFF',
+                  padding: '5px 11px',
+                  borderRadius: '6px',
+                  border: '1px solid #E8E8E8',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                <span>
+                  <strong style={{ fontWeight: 600 }}>{Math.abs(Number(zScore) || parseFloat(deltaPercent) || 0)}σ</strong> <span style={{ color: '#7C7E8C' }}>deviation from expected curve</span>
+                </span>
+              </span>
+            </div>
+
+            {/* Session-Bounded Sparkline Graph */}
+            <div
+              style={{
+                backgroundColor: '#F9F9F9',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                border: '1px solid #E8E8E8',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#7C7E8C' }}>
+                <span>Historical baseline (pre-exit)</span>
+                <span style={{ fontWeight: 600, color: isPositive ? '#00D09C' : '#EB5B3C' }}>● Offline session delta</span>
               </div>
-            )}
+              <svg viewBox="0 0 280 60" style={{ width: '100%', height: '58px', overflow: 'visible' }}>
+                {/* Pre-exit dashed grey path */}
+                <path d={preExitPath} fill="none" stroke="#B0B4C0" strokeWidth="1.8" strokeDasharray="3 3" />
+                {/* Session highlighted colored path */}
+                <path d={sessionPath} fill="none" stroke={isPositive ? '#00D09C' : '#EB5B3C'} strokeWidth="2" />
+                {/* Anomaly Marker on current price point */}
+                {lastPoint && (
+                  <>
+                    <circle cx={lastPoint.x} cy={lastPoint.y} r="5" fill={isPositive ? '#00D09C' : '#EB5B3C'} opacity="0.3" />
+                    <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill={isPositive ? '#00D09C' : '#EB5B3C'} stroke="#FFFFFF" strokeWidth="1.5" />
+                  </>
+                )}
+              </svg>
+            </div>
+
+            {/* Catalyst / Filings Context */}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '8px',
+                backgroundColor: '#F9F9F9',
+                border: '1px solid #E8E8E8',
+                fontSize: '0.82rem',
+                color: '#44475B',
+                lineHeight: 1.5,
+              }}
+            >
+              {alert?.summary ? (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C7E8C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '2px' }}>
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  <div>
+                    <strong style={{ color: '#121212', fontWeight: 600 }}>AI Catalyst:</strong> {alert.summary}
+                  </div>
+                </div>
+              ) : alert?.isSummaryLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div className="skeleton-shimmer" style={{ height: '12px', width: '85%', backgroundColor: '#E8E8E8' }} />
+                  <div className="skeleton-shimmer" style={{ height: '12px', width: '60%', backgroundColor: '#E8E8E8' }} />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span style={{ color: '#7C7E8C' }}>
+                    No media catalyst detected.{' '}
+                    <a
+                      href={alert?.filingUrl || `https://www.nseindia.com/companies-listing/corporate-filings-announcements?symbol=${symbol}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#00D09C', fontWeight: 600, textDecoration: 'none' }}
+                    >
+                      View Exchange Corporate Filings ↗
+                    </a>
+                  </span>
+                  {onRetrySummary && (
+                    <button
+                      type="button"
+                      onClick={() => onRetrySummary(symbol)}
+                      title="Retry AI summary"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#7C7E8C',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#00D09C')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#7C7E8C')}
+                    >
+                      ⟳
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ── SECTION 3: Immediate Action & Alert Management ──────────────── */}
         <div
@@ -478,41 +485,57 @@ export const PlacardExpandedView: React.FC<PlacardExpandedViewProps> = ({
               Sell
             </button>
 
-            <a
-              href={`/terminal?symbol=${symbol}`}
-              onClick={(e) => {
-                e.preventDefault();
-                window.alert(`Navigating to technical chart for ${symbol}`);
-              }}
+            <button
+              type="button"
+              onClick={() => setShowChart((prev) => !prev)}
               style={{
-                backgroundColor: 'transparent',
-                color: '#44475B',
-                border: '1px solid #E8E8E8',
+                backgroundColor: showChart ? '#F5F5F5' : 'transparent',
+                color: showChart ? '#00D09C' : '#44475B',
+                border: showChart ? '1px solid #00D09C' : '1px solid #E8E8E8',
                 borderRadius: '6px',
                 padding: '7px 14px',
                 fontSize: '0.8rem',
-                fontWeight: 500,
-                textDecoration: 'none',
+                fontWeight: 600,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
                 cursor: 'pointer',
-                transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#F5F5F5';
-                e.currentTarget.style.borderColor = '#D0D0D0';
+                if (!showChart) {
+                  e.currentTarget.style.backgroundColor = '#F5F5F5';
+                  e.currentTarget.style.borderColor = '#D0D0D0';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.borderColor = '#E8E8E8';
+                if (!showChart) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = '#E8E8E8';
+                }
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
-              Chart
-            </a>
+              {showChart ? (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  Summary
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  Chart
+                </>
+              )}
+            </button>
           </div>
 
           {/* Acknowledge / Dismiss Button (Dismisses Alert & Closes Modal) */}
